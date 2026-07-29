@@ -62,6 +62,8 @@ const defaultState = {
   },
   records: {},
   floorplans: {},
+  rackLayouts: {},
+  inventory: {},
   centerFloors: {},
   shippers: [],
   centerShipperMap: {},
@@ -75,6 +77,14 @@ let state = loadState();
 ensureBaselineState();
 let selectedCenter = state.centers[0];
 let selectedFloor = getCenterFloors(selectedCenter)[0];
+let twinCenter = null;
+let twinFloor = null;
+let twinHeightMode = "capa";
+let twinState = null;
+let twinViewMode = "view";
+let selectedRackId = null;
+let rackDrag = null;
+let twinElementType = "rack";
 let selectedCategory = { major: "보관공간", minor: "일반" };
 let selectedZoneId = null;
 let floorplanMode = "cell";
@@ -98,6 +108,8 @@ function loadState() {
       majors: parsed.majors || defaultState.majors,
       records: parsed.records || {},
       floorplans: parsed.floorplans || {},
+      rackLayouts: parsed.rackLayouts || {},
+      inventory: parsed.inventory || {},
       centerFloors: parsed.centerFloors || {},
       shippers: parsed.shippers || [],
       centerShipperMap: parsed.centerShipperMap || {},
@@ -253,6 +265,154 @@ function getFloorplan(center, floor = selectedFloor || firstFloor(center)) {
   return state.floorplans[key];
 }
 
+function getRackLayout(center, floor = selectedFloor || firstFloor(center)) {
+  const key = floorplanKey(center, floor);
+  if (!state.rackLayouts[key]) {
+    state.rackLayouts[key] = { racks: [] };
+  }
+  return state.rackLayouts[key];
+}
+
+// 고객사 이름 → 안정적인 색상 (ZONE_COLORS 인덱스)
+function customerColor(name) {
+  if (!name) return "#5ac8fa";
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return ZONE_COLORS[hash % ZONE_COLORS.length];
+}
+
+/* ===== WMS 재고 연동 ===== */
+// CELLDESCR 예: "02-01-05-30" → 존-랙열-베이-단(30=3단)
+function getInventory(center) {
+  return state.inventory[center] || null;
+}
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+// 재고 있는 셀 접두(존-랙열) 목록
+function inventoryPrefixes(inv) {
+  if (!inv) return [];
+  const set = new Set();
+  Object.keys(inv.cells).forEach((code) => {
+    const p = code.split("-");
+    if (p.length >= 4) set.add(p[0] + "-" + p[1]);
+  });
+  return Array.from(set).sort();
+}
+// 화주별 색상 배치: 셀마다 화주(Y열) 색, 단별로 같은 화주끼리 그룹 정렬(왼쪽 정렬)
+// 반환 {placements:[{b,l,color,customer}], customers:Map(name->color), count, qty}
+function rackInventoryPlacement(inv, rack) {
+  const len = Math.max(1, Math.round(number(rack.len)));
+  const levels = Math.max(1, Math.round(number(rack.levels) || TWIN_LEVELS));
+  const customers = new Map();
+  let qty = 0;
+  const perLevel = Array.from({ length: levels }, () => []);
+  if (inv && rack.cellPrefix) {
+    for (let b = 0; b < len; b++) {
+      for (let l = 0; l < levels; l++) {
+        const code = `${rack.cellPrefix}-${pad2(b + 1)}-${pad2((l + 1) * 10)}`;
+        const cell = inv.cells[code];
+        if (!cell) continue;
+        const name = cell.c || "미지정";
+        const color = customerColor(name);
+        customers.set(name, color);
+        qty += number(cell.q);
+        perLevel[l].push({ name, color, origBay: b });
+      }
+    }
+  }
+  const placements = [];
+  perLevel.forEach((arr, l) => {
+    arr.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.origBay - b.origBay));
+    arr.forEach((it, i) => placements.push({ b: i, l, color: it.color, customer: it.name }));
+  });
+  return { placements, customers, count: placements.length, qty };
+}
+
+// 랙(접두)의 실제 점유 슬롯: {set:Set("b,l"), count, qty}  (b,l 0-indexed)
+function occupiedForRack(inv, rack) {
+  const set = new Set();
+  let qty = 0;
+  const len = Math.max(1, Math.round(number(rack.len)));
+  const levels = Math.max(1, Math.round(number(rack.levels) || TWIN_LEVELS));
+  if (!inv || !rack.cellPrefix) return { set, count: 0, qty: 0 };
+  for (let b = 0; b < len; b++) {
+    for (let l = 0; l < levels; l++) {
+      const code = `${rack.cellPrefix}-${pad2(b + 1)}-${pad2((l + 1) * 10)}`;
+      const cell = inv.cells[code];
+      if (cell) {
+        set.add(`${b},${l}`);
+        qty += number(cell.q);
+      }
+    }
+  }
+  return { set, count: set.size, qty };
+}
+
+// xlsx/csv 파일 → 재고 맵 {cells:{code:{q,n,d}}, ...}
+function parseInventoryFile(file) {
+  return new Promise((resolve, reject) => {
+    if (typeof XLSX === "undefined") {
+      reject(new Error("xlsx 파서를 불러오지 못했습니다"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: "array" });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+        if (!rows.length) {
+          reject(new Error("빈 파일입니다"));
+          return;
+        }
+        // 헤더에 앞뒤 공백이 있을 수 있어 trim 후 인덱스로 매핑
+        const header = rows[0].map((h) => String(h).trim());
+        const col = (name) => header.indexOf(name);
+        const iCell = col("CELLDESCR");
+        const iNQty = col("N_QTY");
+        const iQty = col("QTY");
+        const iDescr = col("STOCKDESCR");
+        // 화주명 = Y열(SUPPLIERDESCR). 헤더명 우선, 없으면 Y열(인덱스 24)로 폴백
+        let iOwner = col("SUPPLIERDESCR");
+        if (iOwner < 0) iOwner = 24;
+        if (iCell < 0) {
+          reject(new Error("CELLDESCR 컬럼을 찾을 수 없습니다"));
+          return;
+        }
+        const cells = {};
+        let used = 0;
+        for (let r = 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row) continue;
+          const code = String(row[iCell] ?? "").trim();
+          if (!code) continue;
+          const q = (iNQty >= 0 ? number(row[iNQty]) : 0) || (iQty >= 0 ? number(row[iQty]) : 0) || 0;
+          const descr = iDescr >= 0 ? String(row[iDescr] ?? "").trim() : "";
+          const owner = iOwner >= 0 ? String(row[iOwner] ?? "").trim() : "";
+          if (!cells[code]) cells[code] = { q: 0, n: 0, d: descr, c: owner };
+          cells[code].q += q;
+          cells[code].n += 1;
+          if (!cells[code].d && descr) cells[code].d = descr;
+          if (!cells[code].c && owner) cells[code].c = owner;
+          used++;
+        }
+        resolve({
+          fileName: file.name,
+          importedAt: new Date().toISOString(),
+          rows: used,
+          cellCount: Object.keys(cells).length,
+          cells,
+        });
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 function recordUsed(record) {
   const shipperUsed = (record.shippers || []).reduce((sum, shipper) => sum + number(shipper.used), 0);
   return record.shippers?.length ? shipperUsed : number(record.used);
@@ -381,7 +541,7 @@ function renderNav() {
       button.classList.add("active");
       $(`#${button.dataset.view}`).classList.add("active");
       renderAll();
-      if (button.dataset.view === "mapView") renderCenterMap();
+      if (button.dataset.view === "mapView") setTwinViewMode(twinViewMode);
     });
   });
 }
@@ -1958,6 +2118,28 @@ function bindEvents() {
   if ($("#saveKakaoApiKeyButton")) {
     $("#saveKakaoApiKeyButton").addEventListener("click", saveKakaoApiKey);
   }
+  if ($("#twinCenterSelect")) {
+    $("#twinCenterSelect").addEventListener("change", (e) => {
+      twinCenter = e.target.value;
+      twinFloor = null;
+      selectedRackId = null;
+      renderTwinCurrent();
+    });
+  }
+  if ($("#twinFloorSelect")) {
+    $("#twinFloorSelect").addEventListener("change", (e) => {
+      twinFloor = e.target.value;
+      selectedRackId = null;
+      renderTwinCurrent();
+    });
+  }
+  document.querySelectorAll("[data-twin-height]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      twinHeightMode = btn.dataset.twinHeight;
+      render3DTwin();
+    });
+  });
+  bindRackEditor();
   $("#closeMappingModal").addEventListener("click", closeMappingModal);
   $("#mappingBackdrop").addEventListener("click", closeMappingModal);
   $("#saveMappingModal").addEventListener("click", saveMappingModal);
@@ -2235,6 +2417,1166 @@ function renderAll() {
   renderCenterInfoManager();
   renderCategoryManager();
   renderCenterMap();
+}
+
+/* =========================================================
+   3D 디지털 트윈 점유도 뷰 (mapView 탭)
+   ========================================================= */
+function twinActiveCenter() {
+  if (!twinCenter || !state.centers.includes(twinCenter)) twinCenter = selectedCenter;
+  return twinCenter;
+}
+function twinActiveFloor() {
+  const floors = getCenterFloors(twinActiveCenter());
+  if (!twinFloor || !floors.includes(twinFloor)) twinFloor = floors[0];
+  return twinFloor;
+}
+
+function renderTwinSelectors() {
+  const centerSel = $("#twinCenterSelect");
+  const floorSel = $("#twinFloorSelect");
+  if (!centerSel || !floorSel) return;
+  const center = twinActiveCenter();
+  centerSel.innerHTML = state.centers
+    .map((c) => `<option value="${c}" ${c === center ? "selected" : ""}>${c}</option>`)
+    .join("");
+  const floor = twinActiveFloor();
+  floorSel.innerHTML = getCenterFloors(center)
+    .map((f) => `<option value="${f}" ${f === floor ? "selected" : ""}>${f}</option>`)
+    .join("");
+  document.querySelectorAll("[data-twin-height]").forEach((btn) =>
+    btn.classList.toggle("active", btn.dataset.twinHeight === twinHeightMode),
+  );
+}
+
+// zone -> {cells:[{col,row}], capa, color, customer, name}
+function twinZoneCells(zone) {
+  if (zone.type === "box") {
+    const colStart = (number(zone.x) / 100) * FLOORPLAN_COLS;
+    const rowStart = (number(zone.y) / 100) * FLOORPLAN_ROWS;
+    const w = Math.max((number(zone.w) / 100) * FLOORPLAN_COLS, 0.5);
+    const d = Math.max((number(zone.h) / 100) * FLOORPLAN_ROWS, 0.5);
+    return { rects: [{ x: colStart, z: rowStart, w, d }] };
+  }
+  const rects = (zone.cells || []).map((i) => {
+    const idx = Number(i);
+    return { x: idx % FLOORPLAN_COLS, z: Math.floor(idx / FLOORPLAN_COLS), w: 1, d: 1 };
+  });
+  return { rects };
+}
+
+function render3DTwin() {
+  const mapView = document.getElementById("mapView");
+  if (!mapView || !mapView.classList.contains("active")) return;
+  if (typeof THREE === "undefined") return;
+  const container = $("#twinCanvas");
+  if (!container) return;
+
+  renderTwinSelectors();
+  const center = twinActiveCenter();
+  const floor = twinActiveFloor();
+  const plan = getFloorplan(center, floor);
+  const elements = (getRackLayout(center, floor).racks || []).filter((e) =>
+    elementTypeInfo(e.type).shape === "area" ? number(e.w) > 0 && number(e.d) > 0 : number(e.len) > 0,
+  );
+
+  // 실제 배치가 있으면 그것을, 없으면 도면 zone을 폴백 렌더
+  let items = [];
+  const byCustomer = new Map();
+  const areaLegend = new Map();
+  const addLegend = (name, capa, color) => {
+    const cur = byCustomer.get(name) || { capa: 0, color };
+    cur.capa += number(capa);
+    cur.color = color;
+    byCustomer.set(name, cur);
+  };
+  const inv = getInventory(center);
+  if (elements.length) {
+    const rackEls = elements.filter((e) => elementTypeInfo(e.type).shape !== "area");
+    const maxCapa = Math.max(1, ...rackEls.map((r) => number(r.capa)));
+    elements.forEach((e) => {
+      const info = elementTypeInfo(e.type);
+      if (info.shape === "area") {
+        items.push({
+          type: e.type,
+          col: e.col,
+          row: e.row,
+          w: Math.max(1, Math.round(number(e.w))),
+          d: Math.max(1, Math.round(number(e.d))),
+          height: Math.max(1, Math.round(number(e.height) || 1)),
+          color: e.color || info.color,
+          name: e.name || info.label,
+        });
+        areaLegend.set(info.label, e.color || info.color);
+      } else {
+        const color = e.color || customerColor(e.customer);
+        const capa = number(e.capa);
+        const len = Math.max(1, Math.round(number(e.len)));
+        const levels = Math.max(1, Math.round(number(e.levels) || TWIN_LEVELS));
+        // 재고 연동: 접두+재고파일이 있으면 셀별 화주 색상 배치 사용
+        const placement = inv && e.cellPrefix ? rackInventoryPlacement(inv, e) : null;
+        const fill = placement
+          ? placement.count / (len * levels)
+          : twinHeightMode === "flat"
+            ? 0.6
+            : e.fill != null
+              ? clamp01(e.fill)
+              : Math.min(1, 0.25 + (capa / maxCapa) * 0.75);
+        items.push({
+          type: "rack",
+          col: e.col,
+          row: e.row,
+          len,
+          dir: e.dir === "v" ? "v" : "h",
+          levels,
+          color,
+          fill,
+          placements: placement ? placement.placements : null,
+          customer: e.customer || "미지정",
+          name: e.name || "랙",
+          capa,
+          _slots: len * levels,
+          _occCount: placement ? placement.count : null,
+          _invQty: placement ? placement.qty : null,
+          _custCount: placement ? placement.customers.size : null,
+        });
+        if (placement && placement.customers.size) {
+          placement.customers.forEach((col2, name) => areaLegend.set(name, col2));
+        } else {
+          addLegend(e.customer || "미지정", capa, color);
+        }
+      }
+    });
+  } else {
+    const zones = (plan.zones || []).filter((z) => twinZoneRuns(z).length > 0);
+    const maxCapa = Math.max(1, ...zones.map((z) => number(z.capa)));
+    zones.forEach((z) => {
+      const color = z.color || customerColor(z.customer);
+      const ratio = number(z.capa) / maxCapa;
+      const fill = twinHeightMode === "flat" ? 0.6 : Math.min(1, 0.25 + ratio * 0.75);
+      twinZoneRuns(z).forEach((run) => {
+        items.push({
+          type: "rack",
+          col: run.col,
+          row: run.row,
+          len: run.len,
+          dir: "h",
+          levels: TWIN_LEVELS,
+          color,
+          fill,
+          customer: z.customer || "미지정",
+          name: z.name || "구역",
+          capa: number(z.capa),
+        });
+      });
+      addLegend(z.customer || "미지정", z.capa, color);
+    });
+  }
+
+  // KPI (층 기준 CAPA 집계 — 대시보드와 동일)
+  const totals = floorTotals(center, floor);
+  const free = Math.max(0, totals.capacity - totals.used);
+  $("#twinTotal").textContent = number(totals.capacity).toLocaleString("ko-KR");
+  $("#twinUsed").textContent = number(totals.used).toLocaleString("ko-KR");
+  $("#twinFree").textContent = free.toLocaleString("ko-KR");
+  $("#twinRate").textContent = percent(totals.used, totals.capacity) + "%";
+
+  $("#twinLegend").innerHTML = [
+    ...Array.from(byCustomer.entries()).map(
+      ([name, v]) =>
+        `<div class="twin-legend-item"><span class="twin-sw" style="background:${v.color}"></span>${name} · ${formatPlt(v.capa)}</div>`,
+    ),
+    ...Array.from(areaLegend.entries()).map(
+      ([label, color]) =>
+        `<div class="twin-legend-item"><span class="twin-sw" style="background:${color}"></span>${label}</div>`,
+    ),
+  ].join("");
+  $("#twinEmpty").style.display = items.length ? "none" : "grid";
+
+  ensureTwinScene(container);
+  buildTwinBlocks(items);
+  resizeTwin();
+}
+
+function ensureTwinScene(container) {
+  if (twinState) return;
+  const COLS = FLOORPLAN_COLS;
+  const ROWS = FLOORPLAN_ROWS;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x070a10);
+  scene.fog = new THREE.Fog(0x070a10, COLS * 1.2, COLS * 3);
+
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1000);
+  camera.position.set(COLS * 0.62, ROWS * 1.25, ROWS * 1.6);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.appendChild(renderer.domElement);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(COLS / 2, 0, ROWS / 2);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.maxPolarAngle = Math.PI * 0.49;
+  controls.minDistance = COLS * 0.35;
+  controls.maxDistance = COLS * 2.4;
+
+  scene.add(new THREE.AmbientLight(0x6b7a99, 0.75));
+  const key = new THREE.DirectionalLight(0xcfe4ff, 1.1);
+  key.position.set(COLS * 0.7, ROWS * 1.8, ROWS * 0.3);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  const s = COLS;
+  key.shadow.camera.left = -s;
+  key.shadow.camera.right = s;
+  key.shadow.camera.top = s;
+  key.shadow.camera.bottom = -s;
+  key.shadow.camera.far = COLS * 4;
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x5ac8fa, 0.45);
+  rim.position.set(-COLS * 0.4, ROWS, -ROWS * 0.5);
+  scene.add(rim);
+
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(COLS, ROWS),
+    new THREE.MeshStandardMaterial({ color: 0x0d1420, roughness: 0.95, metalness: 0.1 }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(COLS / 2, 0, ROWS / 2);
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  const grid = new THREE.GridHelper(Math.max(COLS, ROWS), Math.max(COLS, ROWS), 0x1c2a3e, 0x141d2b);
+  grid.position.set(COLS / 2, 0.02, ROWS / 2);
+  grid.material.opacity = 0.5;
+  grid.material.transparent = true;
+  scene.add(grid);
+
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(COLS, 0.1, ROWS)),
+    new THREE.LineBasicMaterial({ color: 0x2f4a6b }),
+  );
+  edge.position.set(COLS / 2, 0.05, ROWS / 2);
+  scene.add(edge);
+
+  const blocks = new THREE.Group();
+  scene.add(blocks);
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+
+  renderer.domElement.addEventListener("mousemove", (event) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(twinState.pick, false)[0];
+    const tip = $("#twinTooltip");
+    if (hit) {
+      const z = hit.object.userData.zone;
+      if (tip && z) {
+        const stage = container.parentElement.getBoundingClientRect();
+        tip.style.display = "block";
+        tip.style.left = event.clientX - stage.left + "px";
+        tip.style.top = event.clientY - stage.top + "px";
+        if (z._area) {
+          tip.innerHTML = `<b>${z.name}</b> · ${z.typeLabel}`;
+        } else if (z._occCount != null) {
+          const custLine = z._custCount > 1 ? ` · 화주 ${z._custCount}곳` : "";
+          tip.innerHTML = `<b>${z.name || "랙"}</b>${custLine}<br><span class="twin-cap">실재고 ${z._occCount}/${z._slots}칸</span> (${Math.round((z._fillRate || 0) * 100)}%) · 수량 ${number(z._invQty).toLocaleString("ko-KR")}`;
+        } else {
+          tip.innerHTML = `<b>${z.customer || "미지정"}</b> · ${z.name || "구역"}<br><span class="twin-cap">${formatPlt(z.capa)}</span> 점유 · 적재율 ${Math.round((z._fillRate || 0) * 100)}%`;
+        }
+      }
+    } else if (tip) {
+      tip.style.display = "none";
+    }
+  });
+  renderer.domElement.addEventListener("mouseleave", () => {
+    const tip = $("#twinTooltip");
+    if (tip) tip.style.display = "none";
+  });
+
+  twinState = { scene, camera, renderer, controls, blocks, container, COLS, ROWS, pick: [], res: null };
+
+  (function loop() {
+    requestAnimationFrame(loop);
+    if (!twinState) return;
+    const active = document.getElementById("mapView")?.classList.contains("active");
+    if (!active) return;
+    twinState.controls.update();
+    twinState.renderer.render(twinState.scene, twinState.camera);
+  })();
+
+  window.addEventListener("resize", resizeTwin);
+}
+
+// 랙 파라미터
+const TWIN_LEVELS = 3; // 단수
+const TWIN_LEVEL_H = 1.4; // 한 단 높이(격자 단위)
+const TWIN_POST = 0.09; // 기둥 두께
+const TWIN_DEPTH = 0.8; // 랙 깊이(1셀 내)
+
+// 요소 타입: rack=선(방향), 나머지=사각 영역
+const TWIN_ELEMENT_TYPES = {
+  rack: { label: "랙", color: "#f59e0b", shape: "line" },
+  office: { label: "사무실", color: "#3b82f6", shape: "area" },
+  dock: { label: "도크/출입구", color: "#eab308", shape: "area" },
+  work: { label: "임가공/작업장", color: "#10b981", shape: "area" },
+  aisle: { label: "통로", color: "#64748b", shape: "area" },
+  etc: { label: "기타", color: "#94a3b8", shape: "area" },
+};
+function elementTypeInfo(type) {
+  return TWIN_ELEMENT_TYPES[type] || TWIN_ELEMENT_TYPES.rack;
+}
+
+// 공유 지오메트리/머티리얼 (씬 재빌드 시 유지)
+function twinResources() {
+  if (twinState.res) return twinState.res;
+  const H = TWIN_LEVELS * TWIN_LEVEL_H;
+  const res = {
+    H,
+    steel: new THREE.MeshStandardMaterial({ color: 0x5b6675, roughness: 0.5, metalness: 0.65 }),
+    beam: new THREE.MeshStandardMaterial({ color: 0xff7a2f, roughness: 0.5, metalness: 0.5 }),
+    wood: new THREE.MeshStandardMaterial({ color: 0x8a6b45, roughness: 0.9, metalness: 0.05 }),
+    palGeo: new THREE.BoxGeometry(0.82, 0.12, TWIN_DEPTH * 0.85),
+    boxGeo: new THREE.BoxGeometry(0.72, TWIN_LEVEL_H * 0.6, TWIN_DEPTH * 0.75),
+    beamGeoByLen: new Map(),
+    postGeoByLevels: new Map(),
+    boxMatByColor: new Map(),
+    pickMat: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  };
+  twinState.res = res;
+  return res;
+}
+function twinBeamGeo(res, len) {
+  if (!res.beamGeoByLen.has(len)) {
+    res.beamGeoByLen.set(len, new THREE.BoxGeometry(len, 0.09, 0.06));
+  }
+  return res.beamGeoByLen.get(len);
+}
+function twinPostGeo(res, levels) {
+  if (!res.postGeoByLevels.has(levels)) {
+    res.postGeoByLevels.set(levels, new THREE.BoxGeometry(TWIN_POST, levels * TWIN_LEVEL_H, TWIN_POST));
+  }
+  return res.postGeoByLevels.get(levels);
+}
+function clamp01(v) {
+  return Math.max(0, Math.min(1, Number(v) || 0));
+}
+function twinBoxMat(res, hex) {
+  if (!res.boxMatByColor.has(hex)) {
+    const c = new THREE.Color(hex);
+    res.boxMatByColor.set(
+      hex,
+      new THREE.MeshStandardMaterial({
+        color: c,
+        roughness: 0.55,
+        metalness: 0.15,
+        emissive: c.clone().multiplyScalar(0.12),
+      }),
+    );
+  }
+  return res.boxMatByColor.get(hex);
+}
+
+// zone -> 점유 셀을 "행별 연속 구간(run)"으로: [{col,row,len}]
+function twinZoneRuns(zone) {
+  const occupied = new Set();
+  if (zone.type === "box") {
+    const c0 = Math.round((number(zone.x) / 100) * FLOORPLAN_COLS);
+    const r0 = Math.round((number(zone.y) / 100) * FLOORPLAN_ROWS);
+    const w = Math.max(1, Math.round((number(zone.w) / 100) * FLOORPLAN_COLS));
+    const d = Math.max(1, Math.round((number(zone.h) / 100) * FLOORPLAN_ROWS));
+    for (let r = r0; r < r0 + d; r++)
+      for (let c = c0; c < c0 + w; c++)
+        if (c >= 0 && c < FLOORPLAN_COLS && r >= 0 && r < FLOORPLAN_ROWS) occupied.add(r * FLOORPLAN_COLS + c);
+  } else {
+    (zone.cells || []).forEach((i) => occupied.add(Number(i)));
+  }
+  const byRow = new Map();
+  occupied.forEach((idx) => {
+    const r = Math.floor(idx / FLOORPLAN_COLS);
+    const c = idx % FLOORPLAN_COLS;
+    if (!byRow.has(r)) byRow.set(r, []);
+    byRow.get(r).push(c);
+  });
+  const runs = [];
+  byRow.forEach((cols, r) => {
+    cols.sort((a, b) => a - b);
+    let start = cols[0];
+    let prev = cols[0];
+    for (let k = 1; k < cols.length; k++) {
+      if (cols[k] !== prev + 1) {
+        runs.push({ col: start, row: r, len: prev - start + 1 });
+        start = cols[k];
+      }
+      prev = cols[k];
+    }
+    runs.push({ col: start, row: r, len: prev - start + 1 });
+  });
+  return runs;
+}
+
+// 랙 유닛 생성 — spec: {col,row,len,dir:'h'|'v',levels,fill}
+// dir 'h': 베이가 +col(x)로, dir 'v': 베이가 +row(z)로 진행
+function buildTwinRackUnit(group, res, spec, boxMat) {
+  const { col, row, len, levels, fill } = spec;
+  const horiz = spec.dir !== "v";
+  const H = levels * TWIN_LEVEL_H;
+  const postGeo = twinPostGeo(res, levels);
+  const depthBase = (1 - TWIN_DEPTH) / 2;
+  const yRot = horiz ? 0 : Math.PI / 2;
+  const place = (mesh, bayOff, depthOff, y) => {
+    if (horiz) mesh.position.set(col + bayOff, y, row + depthOff);
+    else mesh.position.set(col + depthOff, y, row + bayOff);
+  };
+  // 기둥 (베이 경계마다 앞/뒤)
+  for (let b = 0; b <= len; b++) {
+    for (const dOff of [depthBase, depthBase + TWIN_DEPTH]) {
+      const p = new THREE.Mesh(postGeo, res.steel);
+      place(p, b, dOff, H / 2);
+      p.castShadow = true;
+      group.add(p);
+    }
+  }
+  // 가로 빔 (단마다 앞/뒤)
+  const beamGeo = twinBeamGeo(res, len);
+  for (let l = 1; l <= levels; l++) {
+    for (const dOff of [depthBase, depthBase + TWIN_DEPTH]) {
+      const beam = new THREE.Mesh(beamGeo, res.beam);
+      place(beam, len / 2, dOff, l * TWIN_LEVEL_H - 0.12);
+      beam.rotation.y = yRot;
+      beam.castShadow = true;
+      group.add(beam);
+    }
+  }
+  // 팔레트 + 적재 박스
+  const addPallet = (b, l, mat) => {
+    const y = l * TWIN_LEVEL_H + 0.06;
+    const pal = new THREE.Mesh(res.palGeo, res.wood);
+    place(pal, b + 0.5, depthBase + TWIN_DEPTH / 2, y);
+    pal.rotation.y = yRot;
+    pal.castShadow = true;
+    group.add(pal);
+    const box = new THREE.Mesh(res.boxGeo, mat);
+    place(box, b + 0.5, depthBase + TWIN_DEPTH / 2, y + TWIN_LEVEL_H * 0.32);
+    box.rotation.y = yRot;
+    box.castShadow = true;
+    group.add(box);
+  };
+  if (Array.isArray(spec.placements)) {
+    // 재고 연동: 셀별 화주 색상 + 정렬된 위치
+    spec.placements.forEach((p) => addPallet(p.b, p.l, twinBoxMat(res, p.color)));
+  } else {
+    // 적재율만큼 하단부터 채움 (단일 색)
+    const slots = len * levels;
+    const fillCount = Math.round(fill * slots);
+    let placed = 0;
+    for (let l = 0; l < levels; l++) {
+      for (let b = 0; b < len; b++) {
+        if (placed >= fillCount) break;
+        placed++;
+        addPallet(b, l, boxMat);
+      }
+    }
+  }
+}
+
+function buildTwinBlocks(items) {
+  if (!twinState) return;
+  const group = twinState.blocks;
+  twinState.pick.forEach((p) => p.geometry?.dispose?.()); // 픽박스 지오메트리만 정리
+  (twinState.labels || []).forEach((s) => {
+    s.material?.map?.dispose?.();
+    s.material?.dispose?.();
+  });
+  group.clear(); // 공유 지오/머티리얼은 유지, 인스턴스만 제거
+  twinState.pick = [];
+  twinState.labels = [];
+  if (!items || !items.length) return;
+
+  const res = twinResources();
+  items.forEach((spec) => {
+    if (elementTypeInfo(spec.type).shape === "area") {
+      buildTwinArea(group, res, spec);
+      return;
+    }
+    const boxMat = twinBoxMat(res, spec.color || "#5ac8fa");
+    buildTwinRackUnit(group, res, spec, boxMat);
+    const horiz = spec.dir !== "v";
+    const H = spec.levels * TWIN_LEVEL_H;
+    const pickGeo = horiz
+      ? new THREE.BoxGeometry(spec.len, H, 1)
+      : new THREE.BoxGeometry(1, H, spec.len);
+    const pick = new THREE.Mesh(pickGeo, res.pickMat);
+    pick.position.set(
+      horiz ? spec.col + spec.len / 2 : spec.col + 0.5,
+      H / 2,
+      horiz ? spec.row + 0.5 : spec.row + spec.len / 2,
+    );
+    pick.userData.zone = {
+      customer: spec.customer,
+      name: spec.name,
+      capa: spec.capa,
+      _fillRate: spec.fill,
+      _occCount: spec._occCount,
+      _slots: spec._slots,
+      _invQty: spec._invQty,
+      _custCount: spec._custCount,
+    };
+    group.add(pick);
+    twinState.pick.push(pick);
+  });
+}
+
+// 사각 영역 요소 (사무실/도크/작업장/통로/기타)
+function buildTwinArea(group, res, spec) {
+  const { type } = spec;
+  const color = new THREE.Color(spec.color || elementTypeInfo(type).color);
+  const cx = spec.col + spec.w / 2;
+  const cz = spec.row + spec.d / 2;
+  let H;
+  if (type === "office") H = buildTwinOffice(group, spec, color);
+  else if (type === "dock") H = buildTwinDock(group, spec, color);
+  else if (type === "work") H = buildTwinWork(group, spec, color);
+  else if (type === "aisle") H = buildTwinAisle(group, spec, color);
+  else H = buildTwinGeneric(group, spec, color);
+
+  const ph = Math.max(H, 0.6);
+  const pick = new THREE.Mesh(new THREE.BoxGeometry(spec.w, ph, spec.d), res.pickMat);
+  pick.position.set(cx, ph / 2, cz);
+  pick.userData.zone = { _area: true, name: spec.name || elementTypeInfo(type).label, typeLabel: elementTypeInfo(type).label };
+  group.add(pick);
+  twinState.pick.push(pick);
+
+  if (type !== "aisle") {
+    const label = makeTwinLabel(spec.name || elementTypeInfo(type).label);
+    label.position.set(cx, H + 0.8, cz);
+    group.add(label);
+    twinState.labels.push(label);
+  }
+}
+
+function buildTwinOffice(group, spec, color) {
+  const w = spec.w * 0.96;
+  const d = spec.d * 0.96;
+  const cx = spec.col + spec.w / 2;
+  const cz = spec.row + spec.d / 2;
+  const levels = spec.height || 2;
+  const H = levels * TWIN_LEVEL_H;
+  const glass = new THREE.Mesh(
+    new THREE.BoxGeometry(w, H, d),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.25, metalness: 0.3, transparent: true, opacity: 0.72 }),
+  );
+  glass.position.set(cx, H / 2, cz);
+  glass.castShadow = true;
+  glass.receiveShadow = true;
+  group.add(glass);
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(w * 1.02, 0.12, d * 1.02),
+    new THREE.MeshStandardMaterial({ color: 0x1b2536, roughness: 0.8 }),
+  );
+  roof.position.set(cx, H + 0.06, cz);
+  roof.castShadow = true;
+  group.add(roof);
+  const bandMat = new THREE.MeshStandardMaterial({ color: 0xdff0ff, emissive: 0x9cd4ff, emissiveIntensity: 0.8 });
+  for (let l = 1; l <= levels; l++) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(w * 1.004, 0.18, d * 1.004), bandMat);
+    band.position.set(cx, l * TWIN_LEVEL_H - TWIN_LEVEL_H * 0.45, cz);
+    group.add(band);
+  }
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(w, H, d)),
+    new THREE.LineBasicMaterial({ color: 0x8fb4dd }),
+  );
+  edge.position.set(cx, H / 2, cz);
+  group.add(edge);
+  return H;
+}
+
+function buildTwinDock(group, spec, color) {
+  const { col, row, w, d } = spec;
+  const cx = col + w / 2;
+  const cz = row + d / 2;
+  const apron = new THREE.Mesh(
+    new THREE.BoxGeometry(w * 0.98, 0.06, d * 0.98),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.85, emissive: color.clone().multiplyScalar(0.15) }),
+  );
+  apron.position.set(cx, 0.03, cz);
+  apron.receiveShadow = true;
+  group.add(apron);
+  const doorMat = new THREE.MeshStandardMaterial({ color: 0xb8c2cf, roughness: 0.5, metalness: 0.4 });
+  const horiz = w >= d;
+  const along = horiz ? w : d;
+  const count = Math.max(1, Math.floor(along / 2));
+  const doorH = 2.0;
+  for (let i = 0; i < count; i++) {
+    const t = (i + 0.5) * (along / count);
+    const door = new THREE.Mesh(
+      new THREE.BoxGeometry(horiz ? 1.2 : 0.16, doorH, horiz ? 0.16 : 1.2),
+      doorMat,
+    );
+    if (horiz) door.position.set(col + t, doorH / 2, row + 0.2);
+    else door.position.set(col + 0.2, doorH / 2, row + t);
+    door.castShadow = true;
+    group.add(door);
+  }
+  return doorH;
+}
+
+function buildTwinWork(group, spec, color) {
+  const { col, row, w, d } = spec;
+  const cx = col + w / 2;
+  const cz = row + d / 2;
+  const floorZone = new THREE.Mesh(
+    new THREE.BoxGeometry(w * 0.98, 0.05, d * 0.98),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.9, transparent: true, opacity: 0.5 }),
+  );
+  floorZone.position.set(cx, 0.025, cz);
+  floorZone.receiveShadow = true;
+  group.add(floorZone);
+  const tableMat = new THREE.MeshStandardMaterial({ color: 0x9aa7b6, roughness: 0.6, metalness: 0.2 });
+  const tableGeo = new THREE.BoxGeometry(1.2, 0.5, 0.7);
+  let tables = 0;
+  for (let x = col + 1; x < col + w - 0.5 && tables < 60; x += 2.2) {
+    for (let z = row + 0.8; z < row + d - 0.5 && tables < 60; z += 1.8) {
+      const t = new THREE.Mesh(tableGeo, tableMat);
+      t.position.set(x, 0.3, z);
+      t.castShadow = true;
+      group.add(t);
+      tables++;
+    }
+  }
+  return 0.8;
+}
+
+function buildTwinAisle(group, spec, color) {
+  const { col, row, w, d } = spec;
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w * 0.98, 0.04, d * 0.98),
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.9,
+      transparent: true,
+      opacity: 0.35,
+      emissive: color.clone().multiplyScalar(0.12),
+    }),
+  );
+  m.position.set(col + w / 2, 0.02, row + d / 2);
+  m.receiveShadow = true;
+  group.add(m);
+  return 0.04;
+}
+
+function buildTwinGeneric(group, spec, color) {
+  const { col, row, w, d } = spec;
+  const cx = col + w / 2;
+  const cz = row + d / 2;
+  const H = 1.0;
+  const geo = new THREE.BoxGeometry(w * 0.95, H, d * 0.95);
+  const box = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.1, transparent: true, opacity: 0.85 }),
+  );
+  box.position.set(cx, H / 2, cz);
+  box.castShadow = true;
+  box.receiveShadow = true;
+  group.add(box);
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geo),
+    new THREE.LineBasicMaterial({ color: color.clone().multiplyScalar(1.5) }),
+  );
+  edge.position.set(cx, H / 2, cz);
+  group.add(edge);
+  return H;
+}
+
+function makeTwinLabel(text) {
+  const pad = 16;
+  const font = 44;
+  const measure = document.createElement("canvas").getContext("2d");
+  measure.font = `bold ${font}px sans-serif`;
+  const tw = Math.ceil(measure.measureText(text).width);
+  const canvas = document.createElement("canvas");
+  canvas.width = tw + pad * 2;
+  canvas.height = font + pad * 2;
+  const ctx = canvas.getContext("2d");
+  ctx.font = `bold ${font}px sans-serif`;
+  ctx.fillStyle = "rgba(10,14,22,0.82)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "rgba(120,180,240,0.5)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1.5, 1.5, canvas.width - 3, canvas.height - 3);
+  ctx.fillStyle = "#e6edf6";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  const scale = 0.045;
+  sprite.scale.set(canvas.width * scale, canvas.height * scale, 1);
+  return sprite;
+}
+
+function resizeTwin() {
+  if (!twinState) return;
+  const { container, renderer, camera } = twinState;
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+/* ===== 랙 배치 에디터 ===== */
+function renderTwinCurrent() {
+  if (twinViewMode === "edit") renderRackEditor();
+  else render3DTwin();
+}
+
+function setTwinViewMode(mode) {
+  twinViewMode = mode === "edit" ? "edit" : "view";
+  document.querySelectorAll("[data-twin-view]").forEach((b) =>
+    b.classList.toggle("active", b.dataset.twinView === twinViewMode),
+  );
+  const editing = twinViewMode === "edit";
+  const stage = $("#twinStage");
+  const editor = $("#rackEditor");
+  const heightModes = $("#twinHeightModes");
+  if (stage) stage.hidden = editing;
+  if (editor) editor.hidden = !editing;
+  if (heightModes) heightModes.style.visibility = editing ? "hidden" : "visible";
+  if (editing) renderRackEditor();
+  else render3DTwin();
+}
+
+function isAreaElement(el) {
+  return elementTypeInfo(el.type).shape === "area";
+}
+function elementColor(el) {
+  if (isAreaElement(el)) return el.color || elementTypeInfo(el.type).color;
+  return el.color || customerColor(el.customer);
+}
+function elementLabel(el) {
+  return isAreaElement(el) ? el.name || elementTypeInfo(el.type).label : el.customer || "랙";
+}
+function elementStyle(el) {
+  const area = isAreaElement(el);
+  const horiz = el.dir !== "v";
+  const left = (el.col / FLOORPLAN_COLS) * 100;
+  const top = (el.row / FLOORPLAN_ROWS) * 100;
+  const w = ((area ? el.w : horiz ? el.len : 1) / FLOORPLAN_COLS) * 100;
+  const h = ((area ? el.d : horiz ? 1 : el.len) / FLOORPLAN_ROWS) * 100;
+  return `left:${left}%;top:${top}%;width:${w}%;height:${h}%;--rc:${elementColor(el)};`;
+}
+
+function renderRackTypePicker() {
+  const wrap = $("#rackTypePicker");
+  if (!wrap) return;
+  wrap.innerHTML = Object.entries(TWIN_ELEMENT_TYPES)
+    .map(
+      ([key, v]) =>
+        `<button class="rack-type-btn ${key === twinElementType ? "active" : ""}" data-el-type="${key}" type="button"><span class="sw" style="background:${v.color}"></span>${v.label}</button>`,
+    )
+    .join("");
+  wrap.querySelectorAll("[data-el-type]").forEach((b) =>
+    b.addEventListener("click", () => {
+      twinElementType = b.dataset.elType;
+      renderRackTypePicker();
+    }),
+  );
+}
+
+function renderRackEditor() {
+  const center = twinActiveCenter();
+  const floor = twinActiveFloor();
+  renderTwinSelectors();
+  renderRackTypePicker();
+  const plan = getFloorplan(center, floor);
+  const img = $("#rackFloorImage");
+  if (img) {
+    img.src = plan.image || "";
+    img.style.display = plan.image ? "block" : "none";
+  }
+  const empty = $("#rackEditorEmpty");
+  if (empty) empty.style.display = plan.image ? "none" : "grid";
+  // 고객사 datalist
+  const dl = $("#rackCustomerList");
+  if (dl) {
+    const names = allCustomerNames();
+    dl.innerHTML = names.map((n) => `<option value="${n}"></option>`).join("");
+  }
+  renderInventoryStatus();
+  refreshRackLayer();
+  refreshRackList();
+  renderRackForm();
+}
+
+function renderInventoryStatus() {
+  const inv = getInventory(twinActiveCenter());
+  const status = $("#inventoryStatus");
+  if (status) {
+    if (inv) {
+      status.textContent = `연동됨 · ${inv.cellCount}셀 (${inv.fileName})`;
+      status.classList.add("linked");
+    } else {
+      status.textContent = "재고 미연동";
+      status.classList.remove("linked");
+    }
+  }
+  const list = $("#rackPrefixList");
+  if (list) {
+    list.innerHTML = inventoryPrefixes(inv)
+      .map((p) => `<option value="${p}"></option>`)
+      .join("");
+  }
+}
+
+async function uploadInventory(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const status = $("#inventoryStatus");
+  if (status) status.textContent = "재고 분석 중…";
+  try {
+    const parsed = await parseInventoryFile(file);
+    state.inventory[twinActiveCenter()] = parsed;
+    saveState();
+    renderInventoryStatus();
+    renderRackForm();
+    if (twinViewMode === "view") render3DTwin();
+  } catch (err) {
+    if (status) status.textContent = "재고 분석 실패: " + err.message;
+  } finally {
+    event.target.value = "";
+  }
+}
+
+function allCustomerNames() {
+  const names = new Set();
+  Object.values(state.floorplans).forEach((p) =>
+    (p.zones || []).forEach((z) => z.customer && names.add(z.customer)),
+  );
+  Object.values(state.rackLayouts).forEach((l) =>
+    (l.racks || []).forEach((r) => r.customer && names.add(r.customer)),
+  );
+  (state.shippers || []).forEach((s) => names.add(s));
+  return Array.from(names).filter(Boolean).sort();
+}
+
+function refreshRackLayer() {
+  const layer = $("#rackLayer");
+  if (!layer) return;
+  const racks = getRackLayout(twinActiveCenter(), twinActiveFloor()).racks;
+  layer.innerHTML = racks
+    .map(
+      (r) =>
+        `<div class="rack-item ${isAreaElement(r) ? "area" : ""} ${r.id === selectedRackId ? "selected" : ""}" data-rack-id="${r.id}" style="${elementStyle(r)}"><span>${elementLabel(r)}</span></div>`,
+    )
+    .join("");
+  layer.querySelectorAll(".rack-item").forEach((el) =>
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      selectRack(el.dataset.rackId);
+    }),
+  );
+}
+
+function refreshRackList() {
+  const list = $("#rackList");
+  if (!list) return;
+  const racks = getRackLayout(twinActiveCenter(), twinActiveFloor()).racks;
+  if (!racks.length) {
+    list.innerHTML = `<div class="rack-list-empty">아직 배치된 요소가 없습니다. 타입을 고르고 도면 위에서 드래그해 추가하세요.</div>`;
+    return;
+  }
+  list.innerHTML = racks
+    .map((r) => {
+      const meta = isAreaElement(r)
+        ? `${elementTypeInfo(r.type).label} ${r.w}×${r.d}`
+        : `${r.dir === "v" ? "세로" : "가로"} ${r.len}칸·${r.levels || TWIN_LEVELS}단`;
+      return `<div class="rack-list-item ${r.id === selectedRackId ? "selected" : ""}" data-rack-id="${r.id}">
+          <span class="sw" style="background:${elementColor(r)}"></span>
+          <span>${elementLabel(r)}${!isAreaElement(r) && r.name ? " · " + r.name : ""}</span>
+          <small>${meta}</small>
+        </div>`;
+    })
+    .join("");
+  list.querySelectorAll(".rack-list-item").forEach((el) =>
+    el.addEventListener("click", () => selectRack(el.dataset.rackId)),
+  );
+}
+
+function selectedRack() {
+  const racks = getRackLayout(twinActiveCenter(), twinActiveFloor()).racks;
+  return racks.find((r) => r.id === selectedRackId);
+}
+
+function selectRack(id) {
+  selectedRackId = id;
+  refreshRackLayer();
+  refreshRackList();
+  renderRackForm();
+}
+
+function renderRackForm() {
+  const form = $("#rackForm");
+  const el = selectedRack();
+  if (!form) return;
+  form.hidden = !el;
+  if (!el) return;
+  const area = isAreaElement(el);
+  $("#rackFormTitle").textContent = elementTypeInfo(el.type).label + " 속성";
+  $("#rackOnlyFields").hidden = area;
+  $("#areaOnlyFields").hidden = !area;
+  $("#rackName").value = el.name || "";
+  if (area) {
+    $("#areaW").value = el.w;
+    $("#areaD").value = el.d;
+    $("#areaHeight").value = el.height || 1;
+    $("#areaHeightRow").hidden = el.type !== "office";
+    $("#areaColor").value = el.color || elementTypeInfo(el.type).color;
+  } else {
+    $("#rackCustomer").value = el.customer || "";
+    $("#rackCellPrefix").value = el.cellPrefix || "";
+    $("#rackLevels").value = el.levels || TWIN_LEVELS;
+    $("#rackLen").value = el.len;
+    $("#rackDir").value = el.dir === "v" ? "v" : "h";
+    $("#rackCapa").value = el.capa || 0;
+    const fillPct = Math.round((el.fill != null ? el.fill : 0.6) * 100);
+    $("#rackFill").value = fillPct;
+    $("#rackFillVal").textContent = fillPct + "%";
+    // 재고 연동 상태 힌트
+    const inv = getInventory(twinActiveCenter());
+    const hint = $("#rackPrefixHint");
+    if (hint) {
+      if (inv && el.cellPrefix) {
+        const occ = occupiedForRack(inv, el);
+        hint.textContent = `실재고 ${occ.count}/${el.len * (el.levels || TWIN_LEVELS)}칸`;
+      } else {
+        hint.textContent = "";
+      }
+    }
+  }
+}
+
+function updateSelectedRack(patch) {
+  const el = selectedRack();
+  if (!el) return;
+  Object.assign(el, patch);
+  if ("customer" in patch && !isAreaElement(el)) el.color = customerColor(el.customer);
+  saveState();
+  refreshRackLayer();
+  refreshRackList();
+}
+
+function cellFromPointer(gridEl, event) {
+  const rect = gridEl.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width) * FLOORPLAN_COLS;
+  const y = ((event.clientY - rect.top) / rect.height) * FLOORPLAN_ROWS;
+  return {
+    col: Math.max(0, Math.min(FLOORPLAN_COLS - 1, Math.floor(x))),
+    row: Math.max(0, Math.min(FLOORPLAN_ROWS - 1, Math.floor(y))),
+  };
+}
+
+function rackDragRect(start, cur) {
+  const dcol = cur.col - start.col;
+  const drow = cur.row - start.row;
+  if (Math.abs(dcol) >= Math.abs(drow)) {
+    return { dir: "h", col: Math.min(start.col, cur.col), row: start.row, len: Math.abs(dcol) + 1 };
+  }
+  return { dir: "v", col: start.col, row: Math.min(start.row, cur.row), len: Math.abs(drow) + 1 };
+}
+
+function areaDragRect(start, cur) {
+  return {
+    col: Math.min(start.col, cur.col),
+    row: Math.min(start.row, cur.row),
+    w: Math.abs(cur.col - start.col) + 1,
+    d: Math.abs(cur.row - start.row) + 1,
+  };
+}
+
+function startRackDraw(event) {
+  if (twinViewMode !== "edit") return;
+  const grid = $("#rackGrid");
+  if (!grid) return;
+  event.preventDefault();
+  const start = cellFromPointer(grid, event);
+  rackDrag = { start, cur: start };
+  try {
+    if (event.pointerId != null) grid.setPointerCapture(event.pointerId);
+  } catch {
+    /* 합성 이벤트 등에서 캡처 실패 무시 */
+  }
+  updateRackPreview();
+}
+
+function moveRackDraw(event) {
+  if (!rackDrag) return;
+  const grid = $("#rackGrid");
+  rackDrag.cur = cellFromPointer(grid, event);
+  updateRackPreview();
+}
+
+function updateRackPreview() {
+  const preview = $("#rackPreview");
+  if (!preview) return;
+  if (!rackDrag) {
+    preview.hidden = true;
+    return;
+  }
+  const info = elementTypeInfo(twinElementType);
+  const rect =
+    info.shape === "area"
+      ? { type: twinElementType, ...areaDragRect(rackDrag.start, rackDrag.cur), color: info.color }
+      : { type: "rack", ...rackDragRect(rackDrag.start, rackDrag.cur), color: info.color };
+  preview.hidden = false;
+  preview.style.cssText = elementStyle(rect);
+}
+
+function endRackDraw(event) {
+  if (!rackDrag) return;
+  const grid = $("#rackGrid");
+  const cur = cellFromPointer(grid, event);
+  const info = elementTypeInfo(twinElementType);
+  const id = "el-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  let el;
+  if (info.shape === "area") {
+    const a = areaDragRect(rackDrag.start, cur);
+    el = {
+      id,
+      type: twinElementType,
+      col: a.col,
+      row: a.row,
+      w: a.w,
+      d: a.d,
+      name: info.label,
+      color: info.color,
+      height: twinElementType === "office" ? 2 : 1,
+    };
+  } else {
+    const r = rackDragRect(rackDrag.start, cur);
+    el = {
+      id,
+      type: "rack",
+      col: r.col,
+      row: r.row,
+      len: r.len,
+      dir: r.dir,
+      levels: TWIN_LEVELS,
+      customer: "",
+      name: "",
+      capa: 0,
+      fill: 0.6,
+      color: customerColor(""),
+    };
+  }
+  rackDrag = null;
+  $("#rackPreview").hidden = true;
+  getRackLayout(twinActiveCenter(), twinActiveFloor()).racks.push(el);
+  selectedRackId = el.id;
+  saveState();
+  refreshRackLayer();
+  refreshRackList();
+  renderRackForm();
+  (info.shape === "area" ? $("#rackName") : $("#rackCustomer"))?.focus();
+}
+
+function deleteSelectedRack() {
+  const layout = getRackLayout(twinActiveCenter(), twinActiveFloor());
+  layout.racks = layout.racks.filter((r) => r.id !== selectedRackId);
+  selectedRackId = null;
+  saveState();
+  refreshRackLayer();
+  refreshRackList();
+  renderRackForm();
+}
+
+function clearAllRacks() {
+  const layout = getRackLayout(twinActiveCenter(), twinActiveFloor());
+  if (!layout.racks.length) return;
+  if (!window.confirm("이 센터·층의 모든 배치 요소를 삭제할까요?")) return;
+  layout.racks = [];
+  selectedRackId = null;
+  saveState();
+  refreshRackLayer();
+  refreshRackList();
+  renderRackForm();
+}
+
+function uploadRackFloorplan(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    getFloorplan(twinActiveCenter(), twinActiveFloor()).image = reader.result;
+    saveState();
+    renderRackEditor();
+    renderFloorplan?.();
+  };
+  reader.readAsDataURL(file);
+}
+
+function bindRackEditor() {
+  document.querySelectorAll("[data-twin-view]").forEach((btn) =>
+    btn.addEventListener("click", () => setTwinViewMode(btn.dataset.twinView)),
+  );
+  const grid = $("#rackGrid");
+  if (grid) {
+    grid.addEventListener("pointerdown", startRackDraw);
+    grid.addEventListener("pointermove", moveRackDraw);
+    grid.addEventListener("pointerup", endRackDraw);
+    grid.addEventListener("pointercancel", () => {
+      rackDrag = null;
+      $("#rackPreview").hidden = true;
+    });
+  }
+  $("#rackCustomer")?.addEventListener("input", (e) => updateSelectedRack({ customer: e.target.value.trim() }));
+  $("#rackCellPrefix")?.addEventListener("input", (e) => {
+    updateSelectedRack({ cellPrefix: e.target.value.trim() });
+    const el = selectedRack();
+    const inv = getInventory(twinActiveCenter());
+    const hint = $("#rackPrefixHint");
+    if (hint && el) {
+      hint.textContent =
+        inv && el.cellPrefix ? `실재고 ${occupiedForRack(inv, el).count}/${el.len * (el.levels || TWIN_LEVELS)}칸` : "";
+    }
+  });
+  $("#inventoryUpload")?.addEventListener("change", uploadInventory);
+  $("#rackName")?.addEventListener("input", (e) => updateSelectedRack({ name: e.target.value }));
+  $("#rackLevels")?.addEventListener("change", (e) =>
+    updateSelectedRack({ levels: Math.max(1, Math.min(8, Number(e.target.value) || TWIN_LEVELS)) }),
+  );
+  $("#rackLen")?.addEventListener("change", (e) =>
+    updateSelectedRack({ len: Math.max(1, Math.min(FLOORPLAN_COLS, Number(e.target.value) || 1)) }),
+  );
+  $("#rackDir")?.addEventListener("change", (e) => updateSelectedRack({ dir: e.target.value === "v" ? "v" : "h" }));
+  $("#rackCapa")?.addEventListener("change", (e) => updateSelectedRack({ capa: Math.max(0, Number(e.target.value) || 0) }));
+  $("#rackFill")?.addEventListener("input", (e) => {
+    const pct = Number(e.target.value) || 0;
+    $("#rackFillVal").textContent = pct + "%";
+    updateSelectedRack({ fill: pct / 100 });
+  });
+  $("#areaW")?.addEventListener("change", (e) =>
+    updateSelectedRack({ w: Math.max(1, Math.min(FLOORPLAN_COLS, Number(e.target.value) || 1)) }),
+  );
+  $("#areaD")?.addEventListener("change", (e) =>
+    updateSelectedRack({ d: Math.max(1, Math.min(FLOORPLAN_ROWS, Number(e.target.value) || 1)) }),
+  );
+  $("#areaHeight")?.addEventListener("change", (e) =>
+    updateSelectedRack({ height: Math.max(1, Math.min(6, Number(e.target.value) || 1)) }),
+  );
+  $("#areaColor")?.addEventListener("input", (e) => updateSelectedRack({ color: e.target.value }));
+  $("#rackDelete")?.addEventListener("click", deleteSelectedRack);
+  $("#rackClearAll")?.addEventListener("click", clearAllRacks);
+  $("#rackFloorplanUpload")?.addEventListener("change", uploadRackFloorplan);
 }
 
 if (!localStorage.getItem(STORAGE_KEY)) {

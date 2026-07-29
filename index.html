@@ -22,7 +22,7 @@
           <button class="nav-item" data-view="entry">센터별 입력</button>
           <button class="nav-item" data-view="shipper">화주사 분석</button>
           <button class="nav-item" data-view="centers">마스터 관리</button>
-          <button class="nav-item" data-view="mapView">보완중</button>
+          <button class="nav-item" data-view="mapView">3D 점유도</button>
           <button class="nav-item" data-view="manual">매뉴얼</button>
         </nav>
 
@@ -344,28 +344,131 @@
         </section>
 
         <section class="view" id="mapView">
-          <section class="panel">
+          <section class="panel twin-panel">
             <div class="panel-head">
               <div>
-                <h2>보완중</h2>
-                <p class="panel-copy">카카오맵 기준으로 센터 위치와 거점 권역을 확인합니다.</p>
+                <h2>센터 점유도 3D 디지털 트윈</h2>
+                <p class="panel-copy">도면 점유도 데이터를 팔레트 랙으로 3D 시각화합니다. 색 = 고객사, 적재율(채워진 팔레트) = 점유 CAPA 비중. 드래그로 회전, 휠로 확대할 수 있습니다.</p>
               </div>
-              <div class="map-toolbar">
-                <div class="map-api-actions">
-                  <input id="kakaoApiKeyInput" type="password" placeholder="Kakao JavaScript 키 입력" aria-label="Kakao JavaScript 키" />
-                  <button class="primary" id="saveKakaoApiKeyButton" type="button">API 키 저장</button>
-                  <span class="save-status" id="kakaoMapStatus">키 미등록</span>
+              <div class="twin-toolbar">
+                <div class="twin-modes twin-viewmode">
+                  <button class="twin-mode active" data-twin-view="view" type="button">3D 보기</button>
+                  <button class="twin-mode" data-twin-view="edit" type="button">랙 배치 편집</button>
                 </div>
-                <div class="map-legend">
-                  <span><i class="center-dot"></i>센터</span>
-                  <span><i class="hub-dot"></i>거점센터</span>
-                  <span><i class="coverage-dot"></i>커버 권역</span>
+                <label class="twin-select">센터
+                  <select id="twinCenterSelect"></select>
+                </label>
+                <label class="twin-select">층
+                  <select id="twinFloorSelect"></select>
+                </label>
+                <div class="twin-modes" id="twinHeightModes">
+                  <button class="twin-mode active" data-twin-height="capa" type="button">적재율=CAPA</button>
+                  <button class="twin-mode" data-twin-height="flat" type="button">균일 적재</button>
                 </div>
               </div>
             </div>
-            <div class="center-map-layout">
-              <div class="center-map kakao-map" id="centerMap"></div>
-              <aside class="center-map-info" id="centerMapInfo"></aside>
+
+            <div class="twin-stage" id="twinStage">
+              <div class="twin-canvas" id="twinCanvas"></div>
+              <div class="twin-hud twin-kpis">
+                <div class="twin-kpi"><span>전체 CAPA</span><strong id="twinTotal">–</strong></div>
+                <div class="twin-kpi use"><span>사용 CAPA</span><strong id="twinUsed">–</strong></div>
+                <div class="twin-kpi free"><span>여유 CAPA</span><strong id="twinFree">–</strong></div>
+                <div class="twin-kpi"><span>점유율</span><strong id="twinRate">–</strong></div>
+              </div>
+              <div class="twin-hud twin-legend" id="twinLegend"></div>
+              <div class="twin-tooltip" id="twinTooltip"></div>
+              <div class="twin-empty" id="twinEmpty">
+                <strong>표시할 랙 배치가 없습니다</strong>
+                <span>‘랙 배치 편집’ 탭에서 도면 위에 실제 랙을 배치하면 여기에 3D로 표시됩니다. (배치가 없으면 도면 점유도로 대체 표시)</span>
+              </div>
+            </div>
+
+            <div class="rack-editor" id="rackEditor" hidden>
+              <div class="rack-editor-main">
+                <div class="rack-editor-bar">
+                  <label class="file-button">
+                    도면 업로드
+                    <input id="rackFloorplanUpload" type="file" accept="image/*" />
+                  </label>
+                  <label class="file-button">
+                    재고 파일(xlsx)
+                    <input id="inventoryUpload" type="file" accept=".xlsx,.xls,.csv" />
+                  </label>
+                  <span class="save-status" id="inventoryStatus">재고 미연동</span>
+                  <span class="rack-editor-hint">도면 위에서 <b>드래그</b>해 요소를 그립니다. 랙은 가로/세로, 나머지는 사각 영역.</span>
+                </div>
+                <div class="rack-type-picker" id="rackTypePicker"></div>
+                <div class="rack-stage" id="rackStage">
+                  <div class="rack-empty" id="rackEditorEmpty">도면을 업로드하면 이곳에 표시됩니다. 도면 없이도 격자 위에 배치할 수 있습니다.</div>
+                  <img id="rackFloorImage" alt="센터 도면" />
+                  <div class="rack-grid" id="rackGrid"></div>
+                  <div class="rack-layer" id="rackLayer"></div>
+                  <div class="rack-preview" id="rackPreview" hidden></div>
+                </div>
+              </div>
+              <aside class="rack-editor-side">
+                <div class="rack-side-head">
+                  <strong>배치된 랙</strong>
+                  <button class="ghost" id="rackClearAll" type="button">전체 삭제</button>
+                </div>
+                <div class="rack-list" id="rackList"></div>
+                <div class="rack-form" id="rackForm" hidden>
+                  <h4 id="rackFormTitle">요소 속성</h4>
+                  <label>이름
+                    <input id="rackName" placeholder="예: A열 / 메인 사무실" />
+                  </label>
+                  <div id="rackOnlyFields">
+                    <label>고객사
+                      <input id="rackCustomer" list="rackCustomerList" placeholder="고객사명" />
+                      <datalist id="rackCustomerList"></datalist>
+                    </label>
+                    <label>셀 접두 (존-랙열) <span class="rack-field-hint" id="rackPrefixHint"></span>
+                      <input id="rackCellPrefix" list="rackPrefixList" placeholder="예: 02-01 (재고 파일 연동 시)" />
+                      <datalist id="rackPrefixList"></datalist>
+                    </label>
+                    <div class="rack-form-row">
+                      <label>단수
+                        <input id="rackLevels" type="number" min="1" max="8" step="1" />
+                      </label>
+                      <label>베이(칸)
+                        <input id="rackLen" type="number" min="1" max="48" step="1" />
+                      </label>
+                    </div>
+                    <div class="rack-form-row">
+                      <label>방향
+                        <select id="rackDir">
+                          <option value="h">가로</option>
+                          <option value="v">세로</option>
+                        </select>
+                      </label>
+                      <label>점유 CAPA
+                        <input id="rackCapa" type="number" min="0" step="1" />
+                      </label>
+                    </div>
+                    <label>적재율 <span id="rackFillVal">60%</span>
+                      <input id="rackFill" type="range" min="0" max="100" step="5" />
+                    </label>
+                  </div>
+                  <div id="areaOnlyFields" hidden>
+                    <div class="rack-form-row">
+                      <label>가로(칸)
+                        <input id="areaW" type="number" min="1" max="48" step="1" />
+                      </label>
+                      <label>세로(칸)
+                        <input id="areaD" type="number" min="1" max="28" step="1" />
+                      </label>
+                    </div>
+                    <label id="areaHeightRow">높이(층)
+                      <input id="areaHeight" type="number" min="1" max="6" step="1" />
+                    </label>
+                    <label>색상
+                      <input id="areaColor" type="color" />
+                    </label>
+                  </div>
+                  <button class="ghost danger" id="rackDelete" type="button">이 요소 삭제</button>
+                </div>
+              </aside>
             </div>
           </section>
         </section>
@@ -451,6 +554,9 @@
       </section>
     </div>
 
+    <script src="./assets/vendor/three.min.js"></script>
+    <script src="./assets/vendor/OrbitControls.js"></script>
+    <script src="./assets/vendor/xlsx.full.min.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
