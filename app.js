@@ -62,8 +62,12 @@ const DEFAULT_RACK_LAYOUTS = {
     {type:"rack",dir:"v",col:57,row:12,len:27},{type:"rack",dir:"v",col:60,row:12,len:27},
     {type:"rack",dir:"v",col:62,row:12,len:27},{type:"rack",dir:"v",col:65,row:12,len:27},
     {type:"rack",dir:"v",col:67,row:12,len:27},
-    {type:"office",col:70,row:8,w:11,d:8,name:"WMS작업장",color:"#3b82f6",height:2},
     {type:"work",col:69,row:33,w:12,d:8,name:"분배대기장",color:"#10b981",height:1},
+    // 벽/챔버 — VAS 작업장·VAS 챔버(시안 방) + 좌측 방화벽 수평선
+    {type:"wall",col:70,row:10,w:11,d:6,name:"VAS 작업장"},
+    {type:"wall",col:83,row:10,w:4,d:6,name:"VAS"},
+    {type:"wall",col:3,row:34,w:15,d:1},
+    {type:"wall",col:22,row:34,w:15,d:1},
     // 기둥 — 도면의 노란 사각형 마커에서 검출한 실제 구조 기둥 위치
     {type:"column",col:74,row:10},{type:"column",col:75,row:10},{type:"column",col:77,row:10},{type:"column",col:54,row:11},{type:"column",col:8,row:17},{type:"column",col:13,row:17},
     {type:"column",col:18,row:17},{type:"column",col:27,row:17},{type:"column",col:32,row:17},{type:"column",col:42,row:17},{type:"column",col:47,row:17},{type:"column",col:57,row:17},
@@ -3381,31 +3385,35 @@ function buildTwinColumn(group, spec, color) {
   return H;
 }
 
-// 벽/챔버 — 얇고 높은 벽 (파란 도면선 = 벽)
+// 벽/챔버 — 얇고 높은 벽. w,d 둘 다 크면 방(4면 벽=챔버), 아니면 단일 벽선
 function buildTwinWall(group, spec, color) {
   const w = spec.w || 1;
   const d = spec.d || 1;
-  const cx = spec.col + w / 2;
-  const cz = spec.row + d / 2;
   const H = spec.height ? spec.height * TWIN_LEVEL_H : 4.2;
   const th = 0.35;
-  const horiz = w >= d;
-  const bw = horiz ? w : th;
-  const bd = horiz ? th : d;
-  const wall = new THREE.Mesh(
-    new THREE.BoxGeometry(bw, H, bd),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.05, transparent: true, opacity: 0.9 }),
-  );
-  wall.position.set(cx, H / 2, cz);
-  wall.castShadow = true;
-  wall.receiveShadow = true;
-  group.add(wall);
-  const edge = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(bw, H, bd)),
-    new THREE.LineBasicMaterial({ color: 0x2a3340 }),
-  );
-  edge.position.set(cx, H / 2, cz);
-  group.add(edge);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.05, transparent: true, opacity: 0.9 });
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x2a3340 });
+  const panel = (px, pz, pw, pd) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(pw, H, pd), mat);
+    m.position.set(px, H / 2, pz);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    group.add(m);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(pw, H, pd)), edgeMat);
+    e.position.set(px, H / 2, pz);
+    group.add(e);
+  };
+  const c = spec.col, r = spec.row;
+  if (w > 2 && d > 2) {
+    // 챔버(방) — 네 면 벽
+    panel(c + w / 2, r + th / 2, w, th);
+    panel(c + w / 2, r + d - th / 2, w, th);
+    panel(c + th / 2, r + d / 2, th, d);
+    panel(c + w - th / 2, r + d / 2, th, d);
+  } else {
+    const horiz = w >= d;
+    panel(c + w / 2, r + d / 2, horiz ? w : th, horiz ? th : d);
+  }
   return H;
 }
 
