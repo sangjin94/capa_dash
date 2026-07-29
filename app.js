@@ -38,6 +38,8 @@ const DEFAULT_FLOORPLANS = {
   "남이천1센터||지상4층": "./assets/centers/nami1_4f.png",
 };
 // floorplanKey → 기본 랙 배치(도면에서 1차 추출). 사용자가 편집하면 그 값이 우선.
+// 기본 랙/기둥/벽 배치 버전 — 올리면 기존 브라우저도 새 배치로 재시드됨
+const DEFAULT_RACKS_VERSION = 4;
 const DEFAULT_RACK_LAYOUTS = {
   // 남이천1센터 지하1층 — 도면 자동 추출(좌측 수평 랙 2열 + 중앙 수직 랙 + 사무/작업)
   남이천1센터: [
@@ -220,6 +222,7 @@ function loadState() {
       shipperTargetAverages: parsed.shipperTargetAverages || {},
       kakaoApiKey: parsed.kakaoApiKey || "",
       defaultRacksSeeded: parsed.defaultRacksSeeded || false,
+      defaultRacksVersion: parsed.defaultRacksVersion || 0,
     };
   } catch {
     return structuredClone(defaultState);
@@ -305,14 +308,12 @@ function ensureBaselineState() {
       changed = true;
     }
   });
-  // 기본 랙 배치 최초 1회 시드 (이후 사용자가 지우면 다시 채우지 않음)
-  if (!state.defaultRacksSeeded) {
+  // 기본 랙/기둥/벽 배치 — 버전이 바뀌면 기본 배치 키를 새로 시드(좌표·도면 갱신 반영)
+  if (state.defaultRacksVersion !== DEFAULT_RACKS_VERSION) {
     Object.entries(DEFAULT_RACK_LAYOUTS).forEach(([key, els]) => {
-      const cur = state.rackLayouts[key];
-      if (!cur || !Array.isArray(cur.racks) || !cur.racks.length) {
-        state.rackLayouts[key] = { racks: els.map(materializeDefaultRack) };
-      }
+      state.rackLayouts[key] = { racks: els.map(materializeDefaultRack) };
     });
+    state.defaultRacksVersion = DEFAULT_RACKS_VERSION;
     state.defaultRacksSeeded = true;
     changed = true;
   }
