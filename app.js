@@ -610,6 +610,7 @@ function renderFloorSelectors() {
 }
 
 function renderCenterSlicer() {
+  if (!$("#centerSlicer")) return; // 센터 선택 카드 제거됨
   $("#centerSlicer").innerHTML = state.centers
     .map((center) => {
       const item = centerTotals(center);
@@ -715,11 +716,16 @@ function renderOverviewChart(centers) {
 
   document.querySelectorAll("#overviewChart .overview-row").forEach((btn) => {
     btn.addEventListener("click", () => {
-      selectedCenter = btn.dataset.center;
-      selectedFloor = getCenterFloors(selectedCenter)[0];
+      const center = btn.dataset.center;
+      selectedCenter = center;
+      selectedFloor = getCenterFloors(center)[0];
+      twinCenter = center;
+      twinFloor = null;
       selectedZoneId = null;
-      renderAll();
-      document.getElementById("centerDetail")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      selectedRackId = null;
+      // 3D 점유도 탭으로 이동 (nav 버튼 클릭 → 탭 전환 + 트윈 렌더)
+      document.querySelector('[data-view="mapView"]')?.click();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
 }
@@ -3254,13 +3260,15 @@ function renderRackEditor() {
   renderTwinSelectors();
   renderRackTypePicker();
   const plan = getFloorplan(center, floor);
+  // 업로드한 도면이 없으면 센터 대표 이미지(조감도)를 배경으로 사용
+  const bg = plan.image || CENTER_IMAGES[center] || "";
   const img = $("#rackFloorImage");
   if (img) {
-    img.src = plan.image || "";
-    img.style.display = plan.image ? "block" : "none";
+    img.src = bg;
+    img.style.display = bg ? "block" : "none";
   }
   const empty = $("#rackEditorEmpty");
-  if (empty) empty.style.display = plan.image ? "none" : "grid";
+  if (empty) empty.style.display = bg ? "none" : "grid";
   // 고객사 datalist
   const dl = $("#rackCustomerList");
   if (dl) {

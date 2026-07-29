@@ -2517,9 +2517,10 @@ label textarea {
   background-image: linear-gradient(rgba(120,160,210,.10) 1px, transparent 1px),
     linear-gradient(90deg, rgba(120,160,210,.10) 1px, transparent 1px);
   background-size: calc(100%/48) calc(100%/28); }
-.rack-layer { position: absolute; inset: 0; z-index: 3; }
+.rack-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
 .rack-item { position: absolute; box-sizing: border-box; border: 1.5px solid var(--rc);
   background: color-mix(in srgb, var(--rc) 34%, transparent); border-radius: 3px; cursor: pointer;
+  pointer-events: auto;
   display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .rack-item.selected { outline: 2px solid #fff; outline-offset: 1px; z-index: 5; }
 .rack-item span { font-size: 9px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8); white-space: nowrap;
