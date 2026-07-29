@@ -226,8 +226,49 @@ function normalizeCenterInfo(center) {
   return state.centerInfo[center];
 }
 
+let storageWarned = false;
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return true;
+  } catch (err) {
+    // 용량 초과 등 저장 실패 — 화면 갱신은 계속되도록 예외를 삼킴
+    console.warn("상태 저장 실패(브라우저 저장 용량 초과 가능):", err);
+    if (!storageWarned) {
+      storageWarned = true;
+      window.setTimeout(
+        () =>
+          alert(
+            "브라우저 저장 용량을 초과했습니다.\n도면 이미지가 너무 큰 경우가 많습니다 — 도면을 다시 업로드하면 자동 축소되어 저장됩니다.\n(현재 화면 작업은 계속 가능하지만 새로고침 시 일부가 저장되지 않을 수 있습니다.)",
+          ),
+        0,
+      );
+    }
+    return false;
+  }
+}
+
+// 도면 이미지 축소 — localStorage 용량 초과 방지 (긴 변 maxDim, JPEG 압축)
+function downscaleImage(dataUrl, maxDim = 1600, quality = 0.75) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      try {
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 }
 
 function getCenterFloors(center) {
@@ -2253,9 +2294,9 @@ function handleFloorplanUpload(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
-    const plan = getFloorplan(selectedCenter, selectedFloor);
-    plan.image = reader.result;
+  reader.onload = async () => {
+    const image = await downscaleImage(reader.result);
+    getFloorplan(selectedCenter, selectedFloor).image = image;
     saveState();
     renderFloorplan();
   };
@@ -3515,8 +3556,9 @@ function uploadRackFloorplan(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
-    getFloorplan(twinActiveCenter(), twinActiveFloor()).image = reader.result;
+  reader.onload = async () => {
+    const image = await downscaleImage(reader.result);
+    getFloorplan(twinActiveCenter(), twinActiveFloor()).image = image;
     saveState();
     renderRackEditor();
     renderFloorplan?.();
