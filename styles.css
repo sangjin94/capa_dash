@@ -2591,3 +2591,5 @@ label textarea {
   min-height: 120px; display: flex; align-items: center; justify-content: center; }
 #twinPhotoImg { display: none; max-width: 100%; max-height: 320px; object-fit: contain; }
 .twin-photo-empty { color: #6b7688; font-size: 12px; padding: 24px; text-align: center; }
+
+.twin-photo-sub { color: #6b7688; font-weight: 400; font-size: 11px; }

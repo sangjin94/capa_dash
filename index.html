@@ -289,19 +289,6 @@
               </div>
             </div>
 
-            <div class="twin-photo" id="twinPhoto">
-              <div class="twin-photo-head">
-                <strong>센터 사진</strong>
-                <label class="file-button small">사진 업로드/변경
-                  <input id="twinPhotoUpload" type="file" accept="image/*" />
-                </label>
-              </div>
-              <div class="twin-photo-body">
-                <img id="twinPhotoImg" alt="센터 사진" />
-                <div class="twin-photo-empty" id="twinPhotoEmpty">등록된 센터 사진이 없습니다. ‘사진 업로드’로 추가하세요.</div>
-              </div>
-            </div>
-
             <div class="twin-stage" id="twinStage">
               <div class="twin-canvas" id="twinCanvas"></div>
               <div class="twin-hud twin-kpis">
@@ -322,8 +309,8 @@
               <div class="rack-editor-main">
                 <div class="rack-editor-bar">
                   <label class="file-button">
-                    도면 업로드
-                    <input id="rackFloorplanUpload" type="file" accept="image/*" />
+                    도면 업로드 (PDF/이미지)
+                    <input id="rackFloorplanUpload" type="file" accept=".pdf,image/*" />
                   </label>
                   <label class="file-button">
                     재고 파일(xlsx)
@@ -403,6 +390,19 @@
                   <button class="ghost danger" id="rackDelete" type="button">이 요소 삭제</button>
                 </div>
               </aside>
+            </div>
+
+            <div class="twin-photo" id="twinPhoto">
+              <div class="twin-photo-head">
+                <strong>센터 사진 <span class="twin-photo-sub">(참고용)</span></strong>
+                <label class="file-button small">사진 업로드/변경
+                  <input id="twinPhotoUpload" type="file" accept="image/*" />
+                </label>
+              </div>
+              <div class="twin-photo-body">
+                <img id="twinPhotoImg" alt="센터 사진" />
+                <div class="twin-photo-empty" id="twinPhotoEmpty">등록된 센터 사진이 없습니다. ‘사진 업로드’로 추가하세요.</div>
+              </div>
             </div>
           </section>
         </section>
@@ -491,6 +491,7 @@
     <script src="./assets/vendor/three.min.js"></script>
     <script src="./assets/vendor/OrbitControls.js"></script>
     <script src="./assets/vendor/xlsx.full.min.js"></script>
+    <script src="./assets/vendor/pdf.min.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

@@ -273,6 +273,69 @@ function downscaleImage(dataUrl, maxDim = 1600, quality = 0.75) {
   });
 }
 
+// PDF.js 워커: file://에서는 워커 스폰이 막히므로 워커 스크립트를 Blob URL로 로드해 우회
+let _pdfWorkerReady = null;
+function ensurePdfWorker() {
+  if (_pdfWorkerReady) return _pdfWorkerReady;
+  _pdfWorkerReady = fetch("./assets/vendor/pdf.worker.min.js")
+    .then((r) => r.text())
+    .then((code) => {
+      const blob = new Blob([code], { type: "application/javascript" });
+      pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+    })
+    .catch(() => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "./assets/vendor/pdf.worker.min.js";
+    });
+  return _pdfWorkerReady;
+}
+
+// PDF 1페이지 → 이미지 dataURL (흰 배경)
+function pdfFileToImage(file, scale = 2) {
+  return new Promise((resolve, reject) => {
+    if (typeof pdfjsLib === "undefined") {
+      reject(new Error("PDF 라이브러리를 불러오지 못했습니다"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await ensurePdfWorker();
+        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(reader.result) }).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// 업로드 파일(이미지 또는 PDF) → 다운스케일된 도면 이미지
+async function fileToFloorplanImage(file) {
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  if (isPdf) {
+    const raw = await pdfFileToImage(file, 2);
+    return downscaleImage(raw, 2000, 0.82);
+  }
+  const dataUrl = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(file);
+  });
+  return downscaleImage(dataUrl);
+}
+
 function getCenterFloors(center) {
   const floors = state.centerFloors?.[center];
   return Array.isArray(floors) && floors.length ? floors : ["1F"];
@@ -2315,14 +2378,14 @@ function handleWmsUpload(event) {
 function handleFloorplanUpload(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async () => {
-    const image = await downscaleImage(reader.result);
-    getFloorplan(selectedCenter, selectedFloor).image = image;
-    saveState();
-    renderFloorplan();
-  };
-  reader.readAsDataURL(file);
+  fileToFloorplanImage(file)
+    .then((image) => {
+      getFloorplan(selectedCenter, selectedFloor).image = image;
+      saveState();
+      renderFloorplan();
+    })
+    .catch((err) => alert("도면 변환 실패: " + err.message));
+  event.target.value = "";
 }
 
 function addZone() {
@@ -3605,15 +3668,17 @@ function clearAllRacks() {
 function uploadRackFloorplan(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async () => {
-    const image = await downscaleImage(reader.result);
-    getFloorplan(twinActiveCenter(), twinActiveFloor()).image = image;
-    saveState();
-    renderRackEditor();
-    renderFloorplan?.();
-  };
-  reader.readAsDataURL(file);
+  const empty = $("#rackEditorEmpty");
+  if (empty) empty.textContent = "도면 변환 중…";
+  fileToFloorplanImage(file)
+    .then((image) => {
+      getFloorplan(twinActiveCenter(), twinActiveFloor()).image = image;
+      saveState();
+      renderRackEditor();
+      renderFloorplan?.();
+    })
+    .catch((err) => alert("도면 변환 실패: " + err.message));
+  event.target.value = "";
 }
 
 function bindRackEditor() {
