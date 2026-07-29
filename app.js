@@ -3,6 +3,7 @@ const LEGACY_STORAGE_KEY = "hx-center-capa-v1";
 const ALL = "전체";
 const FLOORPLAN_COLS = 48;
 const FLOORPLAN_ROWS = 28;
+const TWIN_LEVELS = 3; // 랙 기본 단수 (파일 상단에서 선언 — 초기 시드에서 참조)
 const ZONE_COLORS = [
   "#f59e0b",
   "#2563eb",
@@ -36,6 +37,73 @@ const DEFAULT_FLOORPLANS = {
   "남이천1센터||지상2층": "./assets/centers/nami1_2f.png",
   "남이천1센터||지상4층": "./assets/centers/nami1_4f.png",
 };
+// floorplanKey → 기본 랙 배치(도면에서 1차 추출). 사용자가 편집하면 그 값이 우선.
+const DEFAULT_RACK_LAYOUTS = {
+  // 남이천1센터 지하1층 — 도면 자동 추출(좌측 수평 랙 2열 + 중앙 수직 랙 + 사무/작업)
+  남이천1센터: [
+    {type:"rack",dir:"h",col:2,row:6,len:8},{type:"rack",dir:"h",col:2,row:7,len:8},
+    {type:"rack",dir:"h",col:2,row:9,len:8},{type:"rack",dir:"h",col:2,row:10,len:8},
+    {type:"rack",dir:"h",col:2,row:12,len:8},{type:"rack",dir:"h",col:2,row:13,len:8},
+    {type:"rack",dir:"h",col:2,row:14,len:8},{type:"rack",dir:"h",col:2,row:16,len:8},
+    {type:"rack",dir:"h",col:2,row:17,len:8},{type:"rack",dir:"h",col:2,row:19,len:8},
+    {type:"rack",dir:"h",col:2,row:20,len:8},{type:"rack",dir:"h",col:2,row:22,len:8},
+    {type:"rack",dir:"h",col:2,row:23,len:8},{type:"rack",dir:"h",col:2,row:25,len:8},
+    {type:"rack",dir:"h",col:15,row:7,len:8},{type:"rack",dir:"h",col:15,row:9,len:8},
+    {type:"rack",dir:"h",col:15,row:10,len:8},{type:"rack",dir:"h",col:15,row:12,len:8},
+    {type:"rack",dir:"h",col:15,row:13,len:8},{type:"rack",dir:"h",col:15,row:14,len:8},
+    {type:"rack",dir:"h",col:15,row:16,len:8},{type:"rack",dir:"h",col:15,row:17,len:8},
+    {type:"rack",dir:"h",col:15,row:19,len:8},{type:"rack",dir:"h",col:15,row:20,len:8},
+    {type:"rack",dir:"h",col:15,row:22,len:8},{type:"rack",dir:"h",col:15,row:23,len:8},
+    {type:"rack",dir:"h",col:15,row:25,len:8},
+    {type:"rack",dir:"v",col:22,row:6,len:16},{type:"rack",dir:"v",col:24,row:6,len:16},
+    {type:"rack",dir:"v",col:25,row:6,len:16},{type:"rack",dir:"v",col:26,row:6,len:16},
+    {type:"rack",dir:"v",col:28,row:6,len:16},{type:"rack",dir:"v",col:29,row:6,len:16},
+    {type:"rack",dir:"v",col:31,row:6,len:16},{type:"rack",dir:"v",col:32,row:6,len:16},
+    {type:"rack",dir:"v",col:34,row:6,len:16},{type:"rack",dir:"v",col:35,row:6,len:16},
+    {type:"rack",dir:"v",col:37,row:6,len:16},{type:"rack",dir:"v",col:38,row:6,len:16},
+    {type:"rack",dir:"v",col:40,row:6,len:16},
+    {type:"office",col:41,row:4,w:6,d:4,name:"WMS작업장",color:"#3b82f6",height:2},
+    {type:"work",col:40,row:18,w:7,d:5,name:"분배대기장",color:"#10b981",height:1},
+  ],
+  // 남이천1센터 지상2층 — 수평 랙 15행(중앙 대형 블록)
+  "남이천1센터||지상2층": [
+    {type:"rack",dir:"h",col:11,row:9,len:27},{type:"rack",dir:"h",col:11,row:10,len:27},
+    {type:"rack",dir:"h",col:11,row:11,len:27},{type:"rack",dir:"h",col:11,row:12,len:27},
+    {type:"rack",dir:"h",col:11,row:13,len:27},{type:"rack",dir:"h",col:11,row:14,len:27},
+    {type:"rack",dir:"h",col:11,row:16,len:27},{type:"rack",dir:"h",col:11,row:17,len:27},
+    {type:"rack",dir:"h",col:11,row:19,len:27},{type:"rack",dir:"h",col:11,row:20,len:27},
+    {type:"rack",dir:"h",col:11,row:21,len:27},{type:"rack",dir:"h",col:11,row:22,len:27},
+    {type:"rack",dir:"h",col:11,row:23,len:27},{type:"rack",dir:"h",col:11,row:24,len:27},
+    {type:"rack",dir:"h",col:11,row:25,len:27},
+  ],
+  // 남이천1센터 지상4층 — 수평 랙 15행(좌측 대형 블록)
+  "남이천1센터||지상4층": [
+    {type:"rack",dir:"h",col:8,row:8,len:22},{type:"rack",dir:"h",col:8,row:10,len:22},
+    {type:"rack",dir:"h",col:8,row:11,len:22},{type:"rack",dir:"h",col:8,row:12,len:22},
+    {type:"rack",dir:"h",col:8,row:13,len:22},{type:"rack",dir:"h",col:8,row:14,len:22},
+    {type:"rack",dir:"h",col:8,row:16,len:22},{type:"rack",dir:"h",col:8,row:17,len:22},
+    {type:"rack",dir:"h",col:8,row:19,len:22},{type:"rack",dir:"h",col:8,row:20,len:22},
+    {type:"rack",dir:"h",col:8,row:21,len:22},{type:"rack",dir:"h",col:8,row:22,len:22},
+    {type:"rack",dir:"h",col:8,row:23,len:22},{type:"rack",dir:"h",col:8,row:24,len:22},
+    {type:"rack",dir:"h",col:8,row:25,len:22},
+  ],
+};
+let _rackSeq = 0;
+// 기본 랙 요소 → 편집 가능한 완전한 요소로 확장(고유 id·기본값 채움)
+function materializeDefaultRack(e) {
+  const id = "el-def-" + (_rackSeq++).toString(36);
+  if (e.type === "rack") {
+    return {
+      id, type: "rack", col: e.col, row: e.row, len: e.len, dir: e.dir === "v" ? "v" : "h",
+      levels: e.levels || TWIN_LEVELS, customer: e.customer || "", name: e.name || "",
+      capa: e.capa || 0, fill: e.fill != null ? e.fill : 0.6, color: e.color || "#5ac8fa",
+    };
+  }
+  return {
+    id, type: e.type, col: e.col, row: e.row, w: e.w, d: e.d,
+    name: e.name || "", color: e.color || "#64748b", height: e.height || 1,
+  };
+}
 const CENTER_MAP_POSITIONS = {
   남이천1센터: { x: 53.8, y: 34.6 },
   남이천2센터: { x: 54.4, y: 35.8 },
@@ -129,6 +197,7 @@ function loadState() {
       centerInfo: parsed.centerInfo || {},
       shipperTargetAverages: parsed.shipperTargetAverages || {},
       kakaoApiKey: parsed.kakaoApiKey || "",
+      defaultRacksSeeded: parsed.defaultRacksSeeded || false,
     };
   } catch {
     return structuredClone(defaultState);
@@ -214,6 +283,17 @@ function ensureBaselineState() {
       changed = true;
     }
   });
+  // 기본 랙 배치 최초 1회 시드 (이후 사용자가 지우면 다시 채우지 않음)
+  if (!state.defaultRacksSeeded) {
+    Object.entries(DEFAULT_RACK_LAYOUTS).forEach(([key, els]) => {
+      const cur = state.rackLayouts[key];
+      if (!cur || !Array.isArray(cur.racks) || !cur.racks.length) {
+        state.rackLayouts[key] = { racks: els.map(materializeDefaultRack) };
+      }
+    });
+    state.defaultRacksSeeded = true;
+    changed = true;
+  }
   if (changed) saveState();
 }
 
@@ -2892,7 +2972,7 @@ function ensureTwinScene(container) {
 }
 
 // 랙 파라미터
-const TWIN_LEVELS = 3; // 단수
+// TWIN_LEVELS 는 파일 상단에서 선언됨
 const TWIN_LEVEL_H = 1.4; // 한 단 높이(격자 단위)
 const TWIN_POST = 0.09; // 기둥 두께
 const TWIN_DEPTH = 0.8; // 랙 깊이(1셀 내)
