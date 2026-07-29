@@ -308,16 +308,7 @@
             <div class="rack-editor" id="rackEditor" hidden>
               <div class="rack-editor-main">
                 <div class="rack-editor-bar">
-                  <label class="file-button">
-                    도면 업로드 (PDF/이미지)
-                    <input id="rackFloorplanUpload" type="file" accept=".pdf,image/*" />
-                  </label>
-                  <label class="file-button">
-                    재고 파일(xlsx)
-                    <input id="inventoryUpload" type="file" accept=".xlsx,.xls,.csv" />
-                  </label>
-                  <span class="save-status" id="inventoryStatus">재고 미연동</span>
-                  <span class="rack-editor-hint">도면 위에서 <b>드래그</b>해 요소를 그립니다. 랙은 가로/세로, 나머지는 사각 영역.</span>
+                  <span class="rack-editor-hint">도면 위에서 <b>드래그</b>해 요소를 그립니다. 랙은 가로/세로, 나머지는 사각 영역. (도면·재고 파일 업로드는 아래 <b>센터 사진</b> 옆에 있습니다)</span>
                 </div>
                 <div class="rack-type-picker" id="rackTypePicker"></div>
                 <div class="rack-stage" id="rackStage">
@@ -394,10 +385,19 @@
 
             <div class="twin-photo" id="twinPhoto">
               <div class="twin-photo-head">
-                <strong>센터 사진 <span class="twin-photo-sub">(참고용)</span></strong>
-                <label class="file-button small">사진 업로드/변경
-                  <input id="twinPhotoUpload" type="file" accept="image/*" />
-                </label>
+                <strong>센터 사진 <span class="twin-photo-sub">(참고용)</span> · 파일 업로드</strong>
+                <div class="twin-photo-uploads">
+                  <label class="file-button small">도면 업로드(PDF/이미지)
+                    <input id="rackFloorplanUpload" type="file" accept=".pdf,image/*" />
+                  </label>
+                  <label class="file-button small">재고 파일(xlsx)
+                    <input id="inventoryUpload" type="file" accept=".xlsx,.xls,.csv" />
+                  </label>
+                  <label class="file-button small">사진 업로드/변경
+                    <input id="twinPhotoUpload" type="file" accept="image/*" />
+                  </label>
+                  <span class="save-status" id="inventoryStatus">재고 미연동</span>
+                </div>
               </div>
               <div class="twin-photo-body">
                 <img id="twinPhotoImg" alt="센터 사진" />

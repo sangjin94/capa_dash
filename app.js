@@ -41,29 +41,29 @@ const DEFAULT_FLOORPLANS = {
 const DEFAULT_RACK_LAYOUTS = {
   // 남이천1센터 지하1층 — 도면 자동 추출(좌측 수평 랙 2열 + 중앙 수직 랙 + 사무/작업)
   남이천1센터: [
-    {type:"rack",dir:"h",col:2,row:6,len:8},{type:"rack",dir:"h",col:2,row:7,len:8},
-    {type:"rack",dir:"h",col:2,row:9,len:8},{type:"rack",dir:"h",col:2,row:10,len:8},
-    {type:"rack",dir:"h",col:2,row:12,len:8},{type:"rack",dir:"h",col:2,row:13,len:8},
-    {type:"rack",dir:"h",col:2,row:14,len:8},{type:"rack",dir:"h",col:2,row:16,len:8},
-    {type:"rack",dir:"h",col:2,row:17,len:8},{type:"rack",dir:"h",col:2,row:19,len:8},
-    {type:"rack",dir:"h",col:2,row:20,len:8},{type:"rack",dir:"h",col:2,row:22,len:8},
-    {type:"rack",dir:"h",col:2,row:23,len:8},{type:"rack",dir:"h",col:2,row:25,len:8},
-    {type:"rack",dir:"h",col:15,row:7,len:8},{type:"rack",dir:"h",col:15,row:9,len:8},
-    {type:"rack",dir:"h",col:15,row:10,len:8},{type:"rack",dir:"h",col:15,row:12,len:8},
-    {type:"rack",dir:"h",col:15,row:13,len:8},{type:"rack",dir:"h",col:15,row:14,len:8},
-    {type:"rack",dir:"h",col:15,row:16,len:8},{type:"rack",dir:"h",col:15,row:17,len:8},
-    {type:"rack",dir:"h",col:15,row:19,len:8},{type:"rack",dir:"h",col:15,row:20,len:8},
-    {type:"rack",dir:"h",col:15,row:22,len:8},{type:"rack",dir:"h",col:15,row:23,len:8},
-    {type:"rack",dir:"h",col:15,row:25,len:8},
-    {type:"rack",dir:"v",col:22,row:6,len:16},{type:"rack",dir:"v",col:24,row:6,len:16},
-    {type:"rack",dir:"v",col:25,row:6,len:16},{type:"rack",dir:"v",col:26,row:6,len:16},
-    {type:"rack",dir:"v",col:28,row:6,len:16},{type:"rack",dir:"v",col:29,row:6,len:16},
-    {type:"rack",dir:"v",col:31,row:6,len:16},{type:"rack",dir:"v",col:32,row:6,len:16},
-    {type:"rack",dir:"v",col:34,row:6,len:16},{type:"rack",dir:"v",col:35,row:6,len:16},
-    {type:"rack",dir:"v",col:37,row:6,len:16},{type:"rack",dir:"v",col:38,row:6,len:16},
-    {type:"rack",dir:"v",col:40,row:6,len:16},
-    {type:"office",col:41,row:4,w:6,d:4,name:"WMS작업장",color:"#3b82f6",height:2},
-    {type:"work",col:40,row:18,w:7,d:5,name:"분배대기장",color:"#10b981",height:1},
+    {type:"rack",dir:"h",col:2,row:6,len:7},{type:"rack",dir:"h",col:2,row:7,len:7},
+    {type:"rack",dir:"h",col:2,row:8,len:7},{type:"rack",dir:"h",col:2,row:10,len:7},
+    {type:"rack",dir:"h",col:2,row:11,len:7},{type:"rack",dir:"h",col:2,row:12,len:7},
+    {type:"rack",dir:"h",col:2,row:13,len:7},{type:"rack",dir:"h",col:2,row:15,len:7},
+    {type:"rack",dir:"h",col:2,row:16,len:7},{type:"rack",dir:"h",col:2,row:17,len:7},
+    {type:"rack",dir:"h",col:2,row:18,len:7},{type:"rack",dir:"h",col:2,row:19,len:7},
+    {type:"rack",dir:"h",col:2,row:21,len:7},{type:"rack",dir:"h",col:2,row:22,len:7},
+    {type:"rack",dir:"h",col:13,row:7,len:7},{type:"rack",dir:"h",col:13,row:8,len:7},
+    {type:"rack",dir:"h",col:13,row:10,len:7},{type:"rack",dir:"h",col:13,row:11,len:7},
+    {type:"rack",dir:"h",col:13,row:12,len:7},{type:"rack",dir:"h",col:13,row:13,len:7},
+    {type:"rack",dir:"h",col:13,row:15,len:7},{type:"rack",dir:"h",col:13,row:16,len:7},
+    {type:"rack",dir:"h",col:13,row:17,len:7},{type:"rack",dir:"h",col:13,row:18,len:7},
+    {type:"rack",dir:"h",col:13,row:19,len:7},{type:"rack",dir:"h",col:13,row:21,len:7},
+    {type:"rack",dir:"h",col:13,row:22,len:7},
+    {type:"rack",dir:"v",col:19,row:6,len:14},{type:"rack",dir:"v",col:20,row:6,len:14},
+    {type:"rack",dir:"v",col:21,row:6,len:14},{type:"rack",dir:"v",col:22,row:6,len:14},
+    {type:"rack",dir:"v",col:24,row:6,len:14},{type:"rack",dir:"v",col:25,row:6,len:14},
+    {type:"rack",dir:"v",col:26,row:6,len:14},{type:"rack",dir:"v",col:27,row:6,len:14},
+    {type:"rack",dir:"v",col:29,row:6,len:14},{type:"rack",dir:"v",col:30,row:6,len:14},
+    {type:"rack",dir:"v",col:31,row:6,len:14},{type:"rack",dir:"v",col:32,row:6,len:14},
+    {type:"rack",dir:"v",col:34,row:6,len:14},
+    {type:"office",col:35,row:4,w:6,d:4,name:"WMS작업장",color:"#3b82f6",height:2},
+    {type:"work",col:34,row:16,w:7,d:5,name:"분배대기장",color:"#10b981",height:1},
   ],
   // 남이천1센터 지상2층 — 수평 랙 15행(중앙 대형 블록)
   "남이천1센터||지상2층": [
@@ -88,6 +88,10 @@ const DEFAULT_RACK_LAYOUTS = {
     {type:"rack",dir:"h",col:8,row:25,len:22},
   ],
 };
+// 남이천1센터 구조 기둥 그리드(축선 X1~X19 × 1~9, 11m 간격) — 세 층 공통
+const DEFAULT_COLUMNS = [{type:"column",col:1,row:6}, {type:"column",col:1,row:8}, {type:"column",col:1,row:11}, {type:"column",col:1,row:13}, {type:"column",col:1,row:16}, {type:"column",col:1,row:18}, {type:"column",col:1,row:21}, {type:"column",col:1,row:23}, {type:"column",col:1,row:26}, {type:"column",col:4,row:6}, {type:"column",col:4,row:8}, {type:"column",col:4,row:11}, {type:"column",col:4,row:13}, {type:"column",col:4,row:16}, {type:"column",col:4,row:18}, {type:"column",col:4,row:21}, {type:"column",col:4,row:23}, {type:"column",col:4,row:26}, {type:"column",col:6,row:6}, {type:"column",col:6,row:8}, {type:"column",col:6,row:11}, {type:"column",col:6,row:13}, {type:"column",col:6,row:16}, {type:"column",col:6,row:18}, {type:"column",col:6,row:21}, {type:"column",col:6,row:23}, {type:"column",col:6,row:26}, {type:"column",col:9,row:6}, {type:"column",col:9,row:8}, {type:"column",col:9,row:11}, {type:"column",col:9,row:13}, {type:"column",col:9,row:16}, {type:"column",col:9,row:18}, {type:"column",col:9,row:21}, {type:"column",col:9,row:23}, {type:"column",col:9,row:26}, {type:"column",col:11,row:6}, {type:"column",col:11,row:8}, {type:"column",col:11,row:11}, {type:"column",col:11,row:13}, {type:"column",col:11,row:16}, {type:"column",col:11,row:18}, {type:"column",col:11,row:21}, {type:"column",col:11,row:23}, {type:"column",col:11,row:26}, {type:"column",col:14,row:6}, {type:"column",col:14,row:8}, {type:"column",col:14,row:11}, {type:"column",col:14,row:13}, {type:"column",col:14,row:16}, {type:"column",col:14,row:18}, {type:"column",col:14,row:21}, {type:"column",col:14,row:23}, {type:"column",col:14,row:26}, {type:"column",col:16,row:6}, {type:"column",col:16,row:8}, {type:"column",col:16,row:11}, {type:"column",col:16,row:13}, {type:"column",col:16,row:16}, {type:"column",col:16,row:18}, {type:"column",col:16,row:21}, {type:"column",col:16,row:23}, {type:"column",col:16,row:26}, {type:"column",col:19,row:6}, {type:"column",col:19,row:8}, {type:"column",col:19,row:11}, {type:"column",col:19,row:13}, {type:"column",col:19,row:16}, {type:"column",col:19,row:18}, {type:"column",col:19,row:21}, {type:"column",col:19,row:23}, {type:"column",col:19,row:26}, {type:"column",col:21,row:6}, {type:"column",col:21,row:8}, {type:"column",col:21,row:11}, {type:"column",col:21,row:13}, {type:"column",col:21,row:16}, {type:"column",col:21,row:18}, {type:"column",col:21,row:21}, {type:"column",col:21,row:23}, {type:"column",col:21,row:26}, {type:"column",col:24,row:6}, {type:"column",col:24,row:8}, {type:"column",col:24,row:11}, {type:"column",col:24,row:13}, {type:"column",col:24,row:16}, {type:"column",col:24,row:18}, {type:"column",col:24,row:21}, {type:"column",col:24,row:23}, {type:"column",col:24,row:26}, {type:"column",col:26,row:6}, {type:"column",col:26,row:8}, {type:"column",col:26,row:11}, {type:"column",col:26,row:13}, {type:"column",col:26,row:16}, {type:"column",col:26,row:18}, {type:"column",col:26,row:21}, {type:"column",col:26,row:23}, {type:"column",col:26,row:26}, {type:"column",col:29,row:6}, {type:"column",col:29,row:8}, {type:"column",col:29,row:11}, {type:"column",col:29,row:13}, {type:"column",col:29,row:16}, {type:"column",col:29,row:18}, {type:"column",col:29,row:21}, {type:"column",col:29,row:23}, {type:"column",col:29,row:26}, {type:"column",col:31,row:6}, {type:"column",col:31,row:8}, {type:"column",col:31,row:11}, {type:"column",col:31,row:13}, {type:"column",col:31,row:16}, {type:"column",col:31,row:18}, {type:"column",col:31,row:21}, {type:"column",col:31,row:23}, {type:"column",col:31,row:26}, {type:"column",col:34,row:6}, {type:"column",col:34,row:8}, {type:"column",col:34,row:11}, {type:"column",col:34,row:13}, {type:"column",col:34,row:16}, {type:"column",col:34,row:18}, {type:"column",col:34,row:21}, {type:"column",col:34,row:23}, {type:"column",col:34,row:26}, {type:"column",col:36,row:6}, {type:"column",col:36,row:8}, {type:"column",col:36,row:11}, {type:"column",col:36,row:13}, {type:"column",col:36,row:16}, {type:"column",col:36,row:18}, {type:"column",col:36,row:21}, {type:"column",col:36,row:23}, {type:"column",col:36,row:26}, {type:"column",col:39,row:6}, {type:"column",col:39,row:8}, {type:"column",col:39,row:11}, {type:"column",col:39,row:13}, {type:"column",col:39,row:16}, {type:"column",col:39,row:18}, {type:"column",col:39,row:21}, {type:"column",col:39,row:23}, {type:"column",col:39,row:26}, {type:"column",col:41,row:6}, {type:"column",col:41,row:8}, {type:"column",col:41,row:11}, {type:"column",col:41,row:13}, {type:"column",col:41,row:16}, {type:"column",col:41,row:18}, {type:"column",col:41,row:21}, {type:"column",col:41,row:23}, {type:"column",col:41,row:26}, {type:"column",col:44,row:6}, {type:"column",col:44,row:8}, {type:"column",col:44,row:11}, {type:"column",col:44,row:13}, {type:"column",col:44,row:16}, {type:"column",col:44,row:18}, {type:"column",col:44,row:21}, {type:"column",col:44,row:23}, {type:"column",col:44,row:26}, {type:"column",col:46,row:6}, {type:"column",col:46,row:8}, {type:"column",col:46,row:11}, {type:"column",col:46,row:13}, {type:"column",col:46,row:16}, {type:"column",col:46,row:18}, {type:"column",col:46,row:21}, {type:"column",col:46,row:23}, {type:"column",col:46,row:26}];
+// 기둥을 기본으로 갖는 층(남이천1센터 세 층)
+const COLUMN_LAYOUT_KEYS = new Set(["남이천1센터", "남이천1센터||지상2층", "남이천1센터||지상4층"]);
 let _rackSeq = 0;
 // 기본 랙 요소 → 편집 가능한 완전한 요소로 확장(고유 id·기본값 채움)
 function materializeDefaultRack(e) {
@@ -100,8 +104,8 @@ function materializeDefaultRack(e) {
     };
   }
   return {
-    id, type: e.type, col: e.col, row: e.row, w: e.w, d: e.d,
-    name: e.name || "", color: e.color || "#64748b", height: e.height || 1,
+    id, type: e.type, col: e.col, row: e.row, w: e.w || 1, d: e.d || 1,
+    name: e.name || "", color: e.color || (e.type === "column" ? "#9aa3b2" : "#64748b"), height: e.height || 1,
   };
 }
 const CENTER_MAP_POSITIONS = {
@@ -288,7 +292,8 @@ function ensureBaselineState() {
     Object.entries(DEFAULT_RACK_LAYOUTS).forEach(([key, els]) => {
       const cur = state.rackLayouts[key];
       if (!cur || !Array.isArray(cur.racks) || !cur.racks.length) {
-        state.rackLayouts[key] = { racks: els.map(materializeDefaultRack) };
+        const seed = COLUMN_LAYOUT_KEYS.has(key) ? els.concat(DEFAULT_COLUMNS) : els;
+        state.rackLayouts[key] = { racks: seed.map(materializeDefaultRack) };
       }
     });
     state.defaultRacksSeeded = true;
@@ -2984,6 +2989,7 @@ const TWIN_ELEMENT_TYPES = {
   dock: { label: "도크/출입구", color: "#eab308", shape: "area" },
   work: { label: "임가공/작업장", color: "#10b981", shape: "area" },
   aisle: { label: "통로", color: "#64748b", shape: "area" },
+  column: { label: "기둥", color: "#9aa3b2", shape: "area" },
   etc: { label: "기타", color: "#94a3b8", shape: "area" },
 };
 function elementTypeInfo(type) {
@@ -3201,6 +3207,7 @@ function buildTwinArea(group, res, spec) {
   else if (type === "dock") H = buildTwinDock(group, spec, color);
   else if (type === "work") H = buildTwinWork(group, spec, color);
   else if (type === "aisle") H = buildTwinAisle(group, spec, color);
+  else if (type === "column") H = buildTwinColumn(group, spec, color);
   else H = buildTwinGeneric(group, spec, color);
 
   const ph = Math.max(H, 0.6);
@@ -3210,7 +3217,7 @@ function buildTwinArea(group, res, spec) {
   group.add(pick);
   twinState.pick.push(pick);
 
-  if (type !== "aisle") {
+  if (type !== "aisle" && type !== "column") {
     const label = makeTwinLabel(spec.name || elementTypeInfo(type).label);
     label.position.set(cx, H + 0.8, cz);
     group.add(label);
@@ -3327,6 +3334,36 @@ function buildTwinAisle(group, spec, color) {
   m.receiveShadow = true;
   group.add(m);
   return 0.04;
+}
+
+// 구조 기둥 — 랙보다 높은 가는 콘크리트 기둥
+function buildTwinColumn(group, spec, color) {
+  const w = spec.w || 1;
+  const d = spec.d || 1;
+  const cx = spec.col + w / 2;
+  const cz = spec.row + d / 2;
+  const H = 5.6; // 랙(4.2)보다 높게 — 구조물로 인식
+  const t = Math.min(0.85, Math.max(0.42, Math.min(w, d) * 0.6));
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.08 });
+  const post = new THREE.Mesh(new THREE.BoxGeometry(t, H, t), mat);
+  post.position.set(cx, H / 2, cz);
+  post.castShadow = true;
+  post.receiveShadow = true;
+  group.add(post);
+  const cap = new THREE.Mesh(
+    new THREE.BoxGeometry(t * 1.5, 0.22, t * 1.5),
+    new THREE.MeshStandardMaterial({ color: 0x5b6472, roughness: 0.85 }),
+  );
+  cap.position.set(cx, H + 0.11, cz);
+  cap.castShadow = true;
+  group.add(cap);
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(t, H, t)),
+    new THREE.LineBasicMaterial({ color: 0x3a4453 }),
+  );
+  edge.position.set(cx, H / 2, cz);
+  group.add(edge);
+  return H;
 }
 
 function buildTwinGeneric(group, spec, color) {

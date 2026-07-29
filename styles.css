@@ -2584,8 +2584,9 @@ label textarea {
 /* 센터 사진 패널 (3D 점유도, 그리기와 분리) */
 .twin-photo { margin-top: 14px; background: #0f1622; border: 1px solid rgba(120,150,190,.18);
   border-radius: 14px; padding: 12px; }
-.twin-photo-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.twin-photo-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .twin-photo-head strong { font-size: 13px; color: #cdd8e8; }
+.twin-photo-uploads { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .file-button.small { padding: 6px 12px; font-size: 12px; }
 .twin-photo-body { position: relative; border-radius: 10px; overflow: hidden; background: #0b111c;
   min-height: 120px; display: flex; align-items: center; justify-content: center; }
