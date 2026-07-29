@@ -308,7 +308,21 @@
             <div class="rack-editor" id="rackEditor" hidden>
               <div class="rack-editor-main">
                 <div class="rack-editor-bar">
-                  <span class="rack-editor-hint">도면 위에서 <b>드래그</b>해 요소를 그립니다. 랙은 가로/세로, 나머지는 사각 영역. (도면·재고 파일 업로드는 아래 <b>센터 사진</b> 옆에 있습니다)</span>
+                  <div class="bg-adjust" title="도면(배경)을 확대·축소·이동해 내가 그린 랙에 맞춥니다. 랙 위치는 그대로 유지됩니다.">
+                    <span class="bg-adjust-label">도면 맞춤</span>
+                    <button type="button" id="bgZoomOut" class="ghost mini">−</button>
+                    <input id="bgScale" type="range" min="20" max="400" step="2" value="100" />
+                    <button type="button" id="bgZoomIn" class="ghost mini">＋</button>
+                    <span class="bg-scale-val" id="bgScaleVal">100%</span>
+                    <span class="bg-nudge">
+                      <button type="button" class="ghost mini" data-bg-nudge="left">◀</button>
+                      <button type="button" class="ghost mini" data-bg-nudge="up">▲</button>
+                      <button type="button" class="ghost mini" data-bg-nudge="down">▼</button>
+                      <button type="button" class="ghost mini" data-bg-nudge="right">▶</button>
+                    </span>
+                    <button type="button" id="bgReset" class="ghost mini">초기화</button>
+                  </div>
+                  <span class="rack-editor-hint">도면 위에서 <b>드래그</b>해 요소를 그립니다. 도면 크기·위치가 랙과 안 맞으면 위 <b>도면 맞춤</b>으로 조정하세요. (파일 업로드는 아래 <b>센터 사진</b> 옆)</span>
                 </div>
                 <div class="rack-type-picker" id="rackTypePicker"></div>
                 <div class="rack-stage" id="rackStage">

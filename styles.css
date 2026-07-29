@@ -2507,16 +2507,23 @@ label textarea {
 .rack-editor-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .rack-editor-hint { font-size: 12px; color: #7d8aa0; }
 .rack-editor-hint b { color: #cdd8e8; }
+.bg-adjust { display: flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 9px;
+  background: #10192a; border: 1px solid rgba(120,160,210,.16); flex-wrap: wrap; }
+.bg-adjust-label { font-size: 12px; color: #9fb2cc; font-weight: 600; }
+.bg-adjust input[type=range] { width: 96px; }
+.bg-scale-val { font-size: 12px; color: #cdd8e8; min-width: 38px; text-align: right; }
+.bg-nudge { display: inline-flex; gap: 2px; }
+.ghost.mini { padding: 2px 7px; font-size: 12px; line-height: 1.4; border-radius: 6px; min-width: 0; }
 
 .rack-stage { position: relative; border-radius: 14px; overflow: hidden; background: #0b111c;
-  border: 1px solid rgba(90,200,250,.14); aspect-ratio: 48 / 28; user-select: none; touch-action: none; }
+  border: 1px solid rgba(90,200,250,.14); aspect-ratio: 96 / 56; user-select: none; touch-action: none; }
 .rack-empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center;
   padding: 20px; color: #6b7688; font-size: 13px; }
 #rackFloorImage { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
 .rack-grid { position: absolute; inset: 0; z-index: 2; cursor: crosshair;
   background-image: linear-gradient(rgba(120,160,210,.10) 1px, transparent 1px),
     linear-gradient(90deg, rgba(120,160,210,.10) 1px, transparent 1px);
-  background-size: calc(100%/48) calc(100%/28); }
+  background-size: calc(100%/96) calc(100%/56); }
 .rack-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
 .rack-item { position: absolute; box-sizing: border-box; border: 1.5px solid var(--rc);
   background: color-mix(in srgb, var(--rc) 34%, transparent); border-radius: 3px; cursor: pointer;
