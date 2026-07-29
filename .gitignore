@@ -1,0 +1,8 @@
+# 작업용 임시 폴더 (xlsx 압축 해제 결과물)
+_xlsx_extract_check/
+_dong_icheon_floorplan_extract/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
