@@ -26,6 +26,16 @@ const CENTER_IMAGES = {
   대월센터: "./assets/centers/daewol.jpeg",
   백암센터: "./assets/centers/baegam.png",
 };
+// 센터별 기본 층 구성 (없으면 ["1F"])
+const DEFAULT_CENTER_FLOORS = {
+  남이천1센터: ["지하1층", "지상2층", "지상4층"],
+};
+// floorplanKey → 기본 도면 이미지. 첫 층은 센터명, 그 외는 `센터||층`.
+const DEFAULT_FLOORPLANS = {
+  남이천1센터: "./assets/centers/nami1_b1.png", // 지하1층(첫 층)
+  "남이천1센터||지상2층": "./assets/centers/nami1_2f.png",
+  "남이천1센터||지상4층": "./assets/centers/nami1_4f.png",
+};
 const CENTER_MAP_POSITIONS = {
   남이천1센터: { x: 53.8, y: 34.6 },
   남이천2센터: { x: 54.4, y: 35.8 },
@@ -192,7 +202,15 @@ function ensureBaselineState() {
       if (JSON.stringify(state.centerInfo[center]) !== before) changed = true;
     }
     if (!Array.isArray(state.centerFloors[center]) || !state.centerFloors[center].length) {
-      state.centerFloors[center] = ["1F"];
+      state.centerFloors[center] = (DEFAULT_CENTER_FLOORS[center] || ["1F"]).slice();
+      changed = true;
+    } else if (
+      DEFAULT_CENTER_FLOORS[center] &&
+      state.centerFloors[center].length === 1 &&
+      state.centerFloors[center][0] === "1F"
+    ) {
+      // 손대지 않은 기본 ["1F"] → 내장 기본 층 구성으로 업그레이드
+      state.centerFloors[center] = DEFAULT_CENTER_FLOORS[center].slice();
       changed = true;
     }
   });
@@ -338,7 +356,8 @@ async function fileToFloorplanImage(file) {
 
 function getCenterFloors(center) {
   const floors = state.centerFloors?.[center];
-  return Array.isArray(floors) && floors.length ? floors : ["1F"];
+  if (Array.isArray(floors) && floors.length) return floors;
+  return (DEFAULT_CENTER_FLOORS[center] || ["1F"]).slice();
 }
 
 function firstFloor(center) {
@@ -367,6 +386,10 @@ function getFloorplan(center, floor = selectedFloor || firstFloor(center)) {
   const key = floorplanKey(center, floor);
   if (!state.floorplans[key]) {
     state.floorplans[key] = { image: "", zones: [] };
+  }
+  // 업로드본이 없으면 기본 내장 도면으로 대체 (사용자 업로드 시 덮어씀)
+  if (!state.floorplans[key].image && DEFAULT_FLOORPLANS[key]) {
+    state.floorplans[key].image = DEFAULT_FLOORPLANS[key];
   }
   return state.floorplans[key];
 }
@@ -2515,7 +2538,7 @@ function seedDemoData() {
     state.centerShipperMap[center] = [shipper, "기타"];
     state.hiddenMappedShippers[center] = [];
     state.centerInfo[center] = defaultCenterInfo(center);
-    state.centerFloors[center] = ["1F"];
+    state.centerFloors[center] = (DEFAULT_CENTER_FLOORS[center] || ["1F"]).slice();
   });
 }
 
