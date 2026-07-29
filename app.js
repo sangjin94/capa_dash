@@ -700,7 +700,7 @@ function renderOverviewChart(centers) {
   $("#overviewChart").innerHTML = rows
     .map(
       (row) => `
-        <div class="overview-row">
+        <button class="overview-row clickable ${row.center === selectedCenter ? "active" : ""}" data-center="${row.center}" type="button">
           <strong class="overview-center">${row.center}</strong>
           ${renderOverviewStackedBar(row)}
           <div class="overview-metrics">
@@ -708,10 +708,20 @@ function renderOverviewChart(centers) {
             <span><b>사용</b>${formatPlt(row.used)}</span>
             <span class="free-value"><b>여유</b>${formatPlt(row.free)}</span>
           </div>
-        </div>
+        </button>
       `,
     )
     .join("");
+
+  document.querySelectorAll("#overviewChart .overview-row").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedCenter = btn.dataset.center;
+      selectedFloor = getCenterFloors(selectedCenter)[0];
+      selectedZoneId = null;
+      renderAll();
+      document.getElementById("centerDetail")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
 }
 
 function renderOverviewStackedBar(row) {
@@ -1795,6 +1805,7 @@ function renderCategoryManager() {
 
 function renderFloorplan() {
   renderFloorSelectors();
+  if (!$("#floorplanStage")) return; // 대시보드에서 도면 점유도 패널 제거됨
   const plan = getFloorplan(selectedCenter, selectedFloor);
   plan.zones.forEach((zone, index) => {
     if (!zone.color) zone.color = ZONE_COLORS[index % ZONE_COLORS.length];
@@ -2207,43 +2218,46 @@ function bindEvents() {
     saveState();
     renderAll();
   });
-  $("#floorplanUpload").addEventListener("change", handleFloorplanUpload);
-  $("#floorplanFloorSelect").addEventListener("change", (event) => {
-    selectedFloor = event.target.value;
-    selectedZoneId = null;
-    renderAll();
-  });
-  $("#addFloorplanFloorButton").addEventListener("click", addFloorToSelectedCenter);
-  $("#addZoneButton").addEventListener("click", addZone);
-  document.querySelectorAll("[data-floorplan-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      floorplanMode = button.dataset.floorplanMode;
-      renderFloorplan();
+  // 도면 점유도 패널(대시보드에서 제거됨) — 요소가 있을 때만 바인딩
+  if ($("#floorplanUpload")) {
+    $("#floorplanUpload").addEventListener("change", handleFloorplanUpload);
+    $("#floorplanFloorSelect").addEventListener("change", (event) => {
+      selectedFloor = event.target.value;
+      selectedZoneId = null;
+      renderAll();
     });
-  });
-  $("#clearZoneCellsButton").addEventListener("click", clearSelectedZoneCells);
-  $("#deleteZoneButton").addEventListener("click", deleteSelectedZone);
-  $("#zoneCustomerInput").addEventListener("input", (event) =>
-    updateSelectedZone({ customer: event.target.value }),
-  );
-  $("#zoneNameInput").addEventListener("input", (event) =>
-    updateSelectedZone({ name: event.target.value }),
-  );
-  $("#zoneCapaInput").addEventListener("input", (event) =>
-    updateSelectedZone({ capa: number(event.target.value) }),
-  );
-  $("#zoneXInput").addEventListener("input", (event) =>
-    updateSelectedZone({ x: number(event.target.value) }),
-  );
-  $("#zoneYInput").addEventListener("input", (event) =>
-    updateSelectedZone({ y: number(event.target.value) }),
-  );
-  $("#zoneWInput").addEventListener("input", (event) =>
-    updateSelectedZone({ w: number(event.target.value) }),
-  );
-  $("#zoneHInput").addEventListener("input", (event) =>
-    updateSelectedZone({ h: number(event.target.value) }),
-  );
+    $("#addFloorplanFloorButton").addEventListener("click", addFloorToSelectedCenter);
+    $("#addZoneButton").addEventListener("click", addZone);
+    document.querySelectorAll("[data-floorplan-mode]").forEach((button) => {
+      button.addEventListener("click", () => {
+        floorplanMode = button.dataset.floorplanMode;
+        renderFloorplan();
+      });
+    });
+    $("#clearZoneCellsButton").addEventListener("click", clearSelectedZoneCells);
+    $("#deleteZoneButton").addEventListener("click", deleteSelectedZone);
+    $("#zoneCustomerInput").addEventListener("input", (event) =>
+      updateSelectedZone({ customer: event.target.value }),
+    );
+    $("#zoneNameInput").addEventListener("input", (event) =>
+      updateSelectedZone({ name: event.target.value }),
+    );
+    $("#zoneCapaInput").addEventListener("input", (event) =>
+      updateSelectedZone({ capa: number(event.target.value) }),
+    );
+    $("#zoneXInput").addEventListener("input", (event) =>
+      updateSelectedZone({ x: number(event.target.value) }),
+    );
+    $("#zoneYInput").addEventListener("input", (event) =>
+      updateSelectedZone({ y: number(event.target.value) }),
+    );
+    $("#zoneWInput").addEventListener("input", (event) =>
+      updateSelectedZone({ w: number(event.target.value) }),
+    );
+    $("#zoneHInput").addEventListener("input", (event) =>
+      updateSelectedZone({ h: number(event.target.value) }),
+    );
+  }
   $("#exportButton").addEventListener("click", exportCsv);
   $("#freeCapaCard").addEventListener("click", openFreeCapaModal);
   $("#freeCapaCard").addEventListener("keydown", (event) => {

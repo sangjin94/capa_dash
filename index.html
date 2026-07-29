@@ -36,7 +36,7 @@
         <header class="topbar">
           <div>
             <h1>센터별 보관 CAPA 현황</h1>
-            <p>센터를 선택하면 해당 센터의 CAPA, 고객사 점유, 도면 점유 현황을 함께 확인합니다.</p>
+            <p>센터를 선택하면 해당 센터의 CAPA와 고객사 점유 현황을 확인합니다. 도면·랙 점유는 3D 점유도 탭에서 확인합니다.</p>
           </div>
           <div class="actions">
             <button class="ghost" id="resetDemoButton" type="button">초기값 복원</button>
@@ -95,7 +95,7 @@
               <div class="panel-head">
                 <div>
                   <h2>센터 선택</h2>
-                  <p class="panel-copy">아래 센터를 선택하면 상세 CAPA, 고객사 점유, 도면 점유도가 바뀝니다.</p>
+                  <p class="panel-copy">아래 센터를 선택하면 상세 CAPA와 고객사 점유가 바뀝니다. (전체 센터 요약의 행을 클릭해도 이동합니다)</p>
                 </div>
               </div>
               <div class="center-slicer" id="centerSlicer"></div>
@@ -142,75 +142,6 @@
             </div>
           </section>
 
-          <section class="panel floorplan-panel">
-            <div class="panel-head">
-              <div>
-                <h2>센터 도면 점유도</h2>
-                <p class="panel-copy">층별 도면 이미지를 업로드한 뒤 셀을 클릭하거나 드래그해서 고객사별 비정형 점유 구역을 표시합니다.</p>
-              </div>
-              <div class="actions">
-                <label class="file-button">
-                  도면 업로드
-                  <input id="floorplanUpload" type="file" accept="image/*" />
-                </label>
-                <select id="floorplanFloorSelect" aria-label="도면 층 선택"></select>
-                <button class="ghost" id="addFloorplanFloorButton" type="button">층 추가</button>
-                <button class="primary" id="addZoneButton" type="button">영역 추가</button>
-              </div>
-            </div>
-
-            <div class="floorplan-layout">
-              <div class="floorplan-stage" id="floorplanStage">
-                <div class="floorplan-empty" id="floorplanEmpty">
-                  센터 도면 이미지를 업로드하면 이곳에 표시됩니다.
-                </div>
-                <img id="floorplanImage" alt="선택 센터 도면" />
-                <div class="cell-layer" id="cellLayer"></div>
-                <div class="zone-layer" id="zoneLayer"></div>
-              </div>
-
-              <aside class="zone-editor">
-                <h3>선택 영역 편집</h3>
-                <p class="hint" id="floorplanModeHint">셀 편집은 도면 셀을 클릭하거나 드래그해 ㄴ자, ㅁ자 형태로 칠합니다. 박스 편집은 영역 박스를 드래그해 빠르게 지정합니다.</p>
-                <div class="mode-toggle editor-mode-toggle" role="group" aria-label="영역 지정 방식">
-                  <button class="active" id="cellModeButton" data-floorplan-mode="cell" type="button">셀로 지정</button>
-                  <button id="boxModeButton" data-floorplan-mode="box" type="button">박스로 지정</button>
-                </div>
-                <label>
-                  고객사
-                  <input id="zoneCustomerInput" type="text" placeholder="예: A고객사" />
-                </label>
-                <label>
-                  구역명
-                  <input id="zoneNameInput" type="text" placeholder="예: 1F 상온 A구역" />
-                </label>
-                <label>
-                  점유 CAPA
-                  <input id="zoneCapaInput" type="number" min="0" step="1" />
-                </label>
-                <div class="range-grid">
-                  <label>
-                    X
-                    <input id="zoneXInput" type="range" min="0" max="90" />
-                  </label>
-                  <label>
-                    Y
-                    <input id="zoneYInput" type="range" min="0" max="90" />
-                  </label>
-                  <label>
-                    너비
-                    <input id="zoneWInput" type="range" min="5" max="100" />
-                  </label>
-                  <label>
-                    높이
-                    <input id="zoneHInput" type="range" min="5" max="100" />
-                  </label>
-                </div>
-                <button class="ghost" id="clearZoneCellsButton" type="button">선택 영역 셀 초기화</button>
-                <button class="danger" id="deleteZoneButton" type="button">선택 영역 삭제</button>
-              </aside>
-            </div>
-          </section>
         </section>
 
         <section class="view" id="entry">
