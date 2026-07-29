@@ -2580,3 +2580,14 @@ label textarea {
 .overview-row.clickable:hover { background: rgba(37, 99, 235, 0.06); }
 .overview-row.clickable.active { background: rgba(37, 99, 235, 0.10); }
 .overview-row.clickable:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+/* 센터 사진 패널 (3D 점유도, 그리기와 분리) */
+.twin-photo { margin-top: 14px; background: #0f1622; border: 1px solid rgba(120,150,190,.18);
+  border-radius: 14px; padding: 12px; }
+.twin-photo-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.twin-photo-head strong { font-size: 13px; color: #cdd8e8; }
+.file-button.small { padding: 6px 12px; font-size: 12px; }
+.twin-photo-body { position: relative; border-radius: 10px; overflow: hidden; background: #0b111c;
+  min-height: 120px; display: flex; align-items: center; justify-content: center; }
+#twinPhotoImg { display: none; max-width: 100%; max-height: 320px; object-fit: contain; }
+.twin-photo-empty { color: #6b7688; font-size: 12px; padding: 24px; text-align: center; }

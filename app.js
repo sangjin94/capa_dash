@@ -64,6 +64,7 @@ const defaultState = {
   floorplans: {},
   rackLayouts: {},
   inventory: {},
+  centerPhotos: {},
   centerFloors: {},
   shippers: [],
   centerShipperMap: {},
@@ -110,6 +111,7 @@ function loadState() {
       floorplans: parsed.floorplans || {},
       rackLayouts: parsed.rackLayouts || {},
       inventory: parsed.inventory || {},
+      centerPhotos: parsed.centerPhotos || {},
       centerFloors: parsed.centerFloors || {},
       shippers: parsed.shippers || [],
       centerShipperMap: parsed.centerShipperMap || {},
@@ -2508,6 +2510,34 @@ function renderTwinSelectors() {
   document.querySelectorAll("[data-twin-height]").forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.twinHeight === twinHeightMode),
   );
+  renderTwinPhoto();
+}
+
+// 센터 사진 (그리기용 도면과 별개). 업로드본 우선, 없으면 기본 조감도
+function getCenterPhoto(center) {
+  return state.centerPhotos[center] || CENTER_IMAGES[center] || "";
+}
+function renderTwinPhoto() {
+  const img = $("#twinPhotoImg");
+  if (!img) return;
+  const src = getCenterPhoto(twinActiveCenter());
+  img.src = src;
+  img.style.display = src ? "block" : "none";
+  const empty = $("#twinPhotoEmpty");
+  if (empty) empty.style.display = src ? "none" : "block";
+}
+function uploadCenterPhoto(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const image = await downscaleImage(reader.result, 1600, 0.8);
+    state.centerPhotos[twinActiveCenter()] = image;
+    saveState();
+    renderTwinPhoto();
+  };
+  reader.readAsDataURL(file);
+  event.target.value = "";
 }
 
 // zone -> {cells:[{col,row}], capa, color, customer, name}
@@ -3260,15 +3290,13 @@ function renderRackEditor() {
   renderTwinSelectors();
   renderRackTypePicker();
   const plan = getFloorplan(center, floor);
-  // 업로드한 도면이 없으면 센터 대표 이미지(조감도)를 배경으로 사용
-  const bg = plan.image || CENTER_IMAGES[center] || "";
   const img = $("#rackFloorImage");
   if (img) {
-    img.src = bg;
-    img.style.display = bg ? "block" : "none";
+    img.src = plan.image || "";
+    img.style.display = plan.image ? "block" : "none";
   }
   const empty = $("#rackEditorEmpty");
-  if (empty) empty.style.display = bg ? "none" : "grid";
+  if (empty) empty.style.display = plan.image ? "none" : "grid";
   // 고객사 datalist
   const dl = $("#rackCustomerList");
   if (dl) {
@@ -3614,6 +3642,7 @@ function bindRackEditor() {
     }
   });
   $("#inventoryUpload")?.addEventListener("change", uploadInventory);
+  $("#twinPhotoUpload")?.addEventListener("change", uploadCenterPhoto);
   $("#rackName")?.addEventListener("input", (e) => updateSelectedRack({ name: e.target.value }));
   $("#rackLevels")?.addEventListener("change", (e) =>
     updateSelectedRack({ levels: Math.max(1, Math.min(8, Number(e.target.value) || TWIN_LEVELS)) }),
