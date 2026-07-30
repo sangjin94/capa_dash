@@ -2519,6 +2519,17 @@ label textarea {
   background: #1c2a3e; color: #cdd8e8; font-weight: 600; cursor: pointer; }
 .bg-toggle:hover { background: #24354c; }
 .bg-toggle.off { background: #3a2430; color: #f0a8b8; border-color: rgba(240,120,150,.35); }
+/* 전체화면 — 3D 보기/랙 배치 편집을 화면 전체로 */
+.twin-fs { padding: 6px 12px; font-size: 12px; font-weight: 600; border-radius: 9px; cursor: pointer;
+  background: #1c2a3e; color: #cdd8e8; border: 1px solid rgba(120,160,210,.28); white-space: nowrap; }
+.twin-fs:hover { background: #24354c; }
+.twin-panel:fullscreen, .twin-panel.fs { padding: 18px 20px; overflow: auto; background: #0b111c; }
+.twin-panel:fullscreen .twin-stage, .twin-panel.fs .twin-stage { height: calc(100vh - 190px); margin-top: 12px; }
+/* 편집 화면: 종횡비(216/126)는 정합 기준이라 유지하고, 폭을 제한해 세로가 화면에 맞게 */
+.twin-panel:fullscreen .rack-editor-main, .twin-panel.fs .rack-editor-main { max-width: calc((100vh - 230px) * 216 / 126); }
+.twin-panel:fullscreen .rack-editor, .twin-panel.fs .rack-editor { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
+.twin-panel:fullscreen .twin-dual, .twin-panel.fs .twin-dual { display: none; } /* 전체화면에선 사진/도면 패널 숨김 */
+.twin-panel:fullscreen .panel-copy, .twin-panel.fs .panel-copy { display: none; }
 .bg-adjust-body { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .bg-adjust-body[hidden] { display: none; }
 .bg-fold.open { background: #24354c; color: #cdd8e8; }

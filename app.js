@@ -3573,6 +3573,48 @@ function makeTwinLabel(text) {
   return sprite;
 }
 
+// 전체화면 — 3D 보기/랙 배치 편집 모두 패널째 확대 (Esc로 종료)
+function twinFullscreenTarget() {
+  return $("#mapView")?.querySelector(".twin-panel") || null;
+}
+function toggleTwinFullscreen() {
+  const el = twinFullscreenTarget();
+  if (!el) return;
+  const native = document.fullscreenElement || document.webkitFullscreenElement;
+  if (native) {
+    (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+    return;
+  }
+  if (el.classList.contains("fs")) {
+    // 폴백(페이지 내 최대화) 해제
+    el.classList.remove("fs");
+    syncTwinFullscreenUI();
+    return;
+  }
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  const fallback = () => {
+    el.classList.add("fs"); // 브라우저가 전체화면을 막는 환경(iframe 등) — 페이지 내 최대화
+    syncTwinFullscreenUI();
+  };
+  if (!req) return fallback();
+  try {
+    const p = req.call(el);
+    if (p && typeof p.catch === "function") p.catch(fallback);
+  } catch {
+    fallback();
+  }
+}
+function syncTwinFullscreenUI() {
+  const el = twinFullscreenTarget();
+  const native = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  if (native) el?.classList.remove("fs"); // 네이티브 전환 시 폴백 클래스 정리
+  const on = native || !!el?.classList.contains("fs");
+  const btn = $("#twinFullscreen");
+  if (btn) btn.textContent = on ? "⛶ 전체화면 종료" : "⛶ 전체화면";
+  // 3D 캔버스는 컨테이너 크기 변경에 맞춰 재계산
+  if (twinViewMode === "view") window.setTimeout(resizeTwin, 60);
+}
+
 function resizeTwin() {
   if (!twinState) return;
   const { container, renderer, camera } = twinState;
@@ -4198,8 +4240,19 @@ function bindRackEditor() {
   $("#rackDelete")?.addEventListener("click", deleteSelectedRack);
   $("#rackClearAll")?.addEventListener("click", clearAllRacks);
   $("#rackFloorplanUpload")?.addEventListener("change", uploadRackFloorplan);
+  $("#twinFullscreen")?.addEventListener("click", toggleTwinFullscreen);
+  document.addEventListener("fullscreenchange", syncTwinFullscreenUI);
+  document.addEventListener("webkitfullscreenchange", syncTwinFullscreenUI);
   // 화살표 키로 선택 요소 미세 이동 (편집 모드, 입력창 포커스가 아닐 때)
   window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const el = twinFullscreenTarget();
+      if (el?.classList.contains("fs")) {
+        el.classList.remove("fs");
+        syncTwinFullscreenUI();
+        return;
+      }
+    }
     if (twinViewMode !== "edit" || !selectedRackId) return;
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
