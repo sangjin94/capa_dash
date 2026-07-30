@@ -203,21 +203,32 @@ def to_app_inventory(rows, file_name="gaon 연동"):
                 return 0
 
         q = num("N_QTY") or num("QTY")
+        # 파렛트 환산: 낱개수량 ÷ 파렛트입수 (PALLET_ENTRY_QUANTITY)
+        per = num("PALLET_ENTRY_QUANTITY")
+        plt = (q / per) if per > 0 else 0
         descr = (r.get("STOCKDESCR") or "").strip()
         owner = (r.get("SUPPLIERDESCR") or "").strip()
-        c = cells.setdefault(code, {"q": 0, "n": 0, "d": descr, "c": owner})
+        c = cells.setdefault(code, {"q": 0, "n": 0, "d": descr, "c": owner, "plt": 0, "per": per})
         c["q"] += q
+        c["plt"] += plt
+        if not c.get("per") and per:
+            c["per"] = per
         c["n"] += 1
         if not c["d"] and descr:
             c["d"] = descr
         if not c["c"] and owner:
             c["c"] = owner
         used += 1
+    total_plt = 0.0
+    for c in cells.values():
+        c["plt"] = round(c["plt"], 2)
+        total_plt += c["plt"]
     return {
         "fileName": file_name,
         "importedAt": datetime.now(timezone.utc).isoformat(),
         "rows": used,
         "cellCount": len(cells),
+        "totalPlt": round(total_plt, 1),
         "cells": cells,
     }
 

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=26" />
+    <link rel="stylesheet" href="./styles.css?v=28" />
   </head>
   <body>
     <div class="app-shell">
@@ -431,7 +431,8 @@
               <div class="twin-photo-head">
                 <strong>재고 · 파일</strong>
                 <div class="twin-photo-uploads">
-                  <button type="button" id="gaonFetch" class="file-button small gaon-btn" title="gaon(전산)에서 셀별 재고를 직접 불러옵니다. 중계 서버(server/serve.py) 필요">🔄 gaon 재고</button>
+                  <button type="button" id="gaonFetch" class="file-button small gaon-btn" title="등록된 화주 전체의 셀별 재고를 gaon에서 불러와 갱신합니다">🔄 gaon 재고 전체 갱신</button>
+                  <button type="button" id="gaonShippers" class="file-button small" title="조회할 화주 목록을 등록합니다">👥 화주 관리</button>
                   <span class="save-status" id="inventoryStatus">재고 미연동</span>
                   <button type="button" id="photoPanelToggle" class="ghost mini bg-fold" aria-expanded="false" title="사진·도면 업로드와 미리보기 펼치기/접기">사진·도면 ▾</button>
                 </div>
@@ -554,6 +555,6 @@
       <figcaption id="imgModalCaption"></figcaption>
       <img id="imgModalImg" alt="" />
     </div>
-    <script src="./app.js?v=26"></script>
+    <script src="./app.js?v=28"></script>
   </body>
 </html>

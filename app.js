@@ -669,9 +669,10 @@ function rackInventoryPlacement(inv, rack) {
 function occupiedForRack(inv, rack) {
   const set = new Set();
   let qty = 0;
+  let plt = 0;
   const len = Math.max(1, Math.round(number(rack.len)));
   const levels = Math.max(1, Math.round(number(rack.levels) || TWIN_LEVELS));
-  if (!inv || !rack.cellPrefix) return { set, count: 0, qty: 0 };
+  if (!inv || !rack.cellPrefix) return { set, count: 0, qty: 0, plt: 0 };
   for (let b = 0; b < len; b++) {
     for (let l = 0; l < levels; l++) {
       const code = `${rack.cellPrefix}-${pad2(b + 1)}-${pad2((l + 1) * 10)}`;
@@ -679,10 +680,11 @@ function occupiedForRack(inv, rack) {
       if (cell) {
         set.add(`${b},${l}`);
         qty += number(cell.q);
+        plt += number(cell.plt);
       }
     }
   }
-  return { set, count: set.size, qty };
+  return { set, count: set.size, qty, plt };
 }
 
 // xlsx/csv 파일 → 재고 맵 {cells:{code:{q,n,d}}, ...}
@@ -3979,6 +3981,7 @@ function renderRackEditor() {
     dl.innerHTML = names.map((n) => `<option value="${n}"></option>`).join("");
   }
   renderInventoryStatus();
+  renderGaonShipperButton();
   refreshRackLayer();
   refreshRackList();
   renderRackForm();
@@ -4002,7 +4005,8 @@ function renderInventoryStatus() {
   const status = $("#inventoryStatus");
   if (status) {
     if (inv) {
-      status.textContent = `연동됨 · ${inv.cellCount}셀 · ${inventoryAgeText(inv)}`;
+      const pltTxt = inv.totalPlt ? ` · ${Number(inv.totalPlt).toLocaleString("ko-KR")} PLT` : "";
+      status.textContent = `연동됨 · ${inv.cellCount}셀${pltTxt} · ${inventoryAgeText(inv)}`;
       status.title = inv.fileName || "";
       status.classList.add("linked");
     } else {
@@ -4050,35 +4054,30 @@ function manageGaonShippers(center) {
     .filter((s) => s.code);
   state.gaonShippers[center] = next;
   saveState();
+  renderGaonShipperButton();
   return next;
 }
-// 조회 대상 화주 선택 — 저장된 목록에서 고르거나 전체 일괄
-function pickGaonShippers(center) {
+// 조회 대상 = 저장된 화주 목록 전체 (매번 입력하지 않는다)
+function gaonTargets(center) {
   let list = gaonShipperList(center);
   if (!list.length) {
-    alert(`${center}에 저장된 화주가 없습니다.\n먼저 화주 목록을 등록해 주세요.`);
+    alert(`${center}에 등록된 화주가 없습니다.
+먼저 ‘👥 화주 관리’에서 목록을 등록해 주세요.`);
     list = manageGaonShippers(center) || [];
-    if (!list.length) return null;
   }
-  const menu =
-    list.map((s, i) => `${i + 1}) ${s.code} ${s.name || ""}`).join("\n") +
-    `\n\nA) 전체 ${list.length}곳 일괄 조회\nE) 화주 목록 편집`;
-  const ans = (window.prompt(`${center} — 조회할 화주를 고르세요.\n\n${menu}`, "A") || "").trim();
-  if (!ans) return null;
-  if (ans.toUpperCase() === "E") {
-    const next = manageGaonShippers(center);
-    return next && next.length ? pickGaonShippers(center) : null;
-  }
-  if (ans.toUpperCase() === "A") return list;
-  const picks = ans
-    .split(/[,\s]+/)
-    .map((n) => list[parseInt(n, 10) - 1])
-    .filter(Boolean);
-  if (!picks.length) {
-    alert("선택이 올바르지 않습니다.");
-    return null;
-  }
-  return picks;
+  return list;
+}
+// 화주 관리 버튼 라벨 갱신
+function renderGaonShipperButton() {
+  const btn = $("#gaonShippers");
+  if (!btn) return;
+  const n = gaonShipperList(twinActiveCenter()).length;
+  btn.textContent = n ? `👥 화주 ${n}곳` : "👥 화주 관리";
+  btn.title = n
+    ? gaonShipperList(twinActiveCenter())
+        .map((x) => `${x.code} ${x.name || ""}`.trim())
+        .join("\n")
+    : "조회할 화주 목록을 등록합니다";
 }
 
 // gaon 로그인 — 사번/비밀번호는 중계 서버 메모리에만 유지되고 저장되지 않는다
@@ -4117,13 +4116,13 @@ async function fetchGaonInventory() {
     if (!state.centerWmsCodes) state.centerWmsCodes = {};
     state.centerWmsCodes[center] = wh;
   }
-  // 조회할 화주 선택 (센터 전체 조회는 범위가 모호해 제공하지 않음)
-  const targets = pickGaonShippers(center);
+  // 등록된 화주 전체를 한 번에 조회·갱신 (센터 전체 조회는 범위가 모호해 제공하지 않음)
+  const targets = gaonTargets(center);
   if (!targets || !targets.length) return;
   const today = new Date();
   const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
   try {
-    const merged = { fileName: "", importedAt: new Date().toISOString(), rows: 0, cellCount: 0, cells: {} };
+    const merged = { fileName: "", importedAt: new Date().toISOString(), rows: 0, cellCount: 0, totalPlt: 0, cells: {} };
     const done = [];
     for (let i = 0; i < targets.length; i++) {
       const t = targets[i];
@@ -4140,13 +4139,16 @@ async function fetchGaonInventory() {
       if (!data.ok) throw new Error(`${t.name || t.code}: ${data.error || `HTTP ${res.status}`}`);
       // 여러 화주 결과를 셀 단위로 합침
       Object.entries(data.inventory.cells || {}).forEach(([code, v]) => {
-        const c = merged.cells[code] || (merged.cells[code] = { q: 0, n: 0, d: v.d, c: v.c });
+        const c = merged.cells[code] || (merged.cells[code] = { q: 0, n: 0, plt: 0, per: v.per || 0, d: v.d, c: v.c });
         c.q += v.q;
         c.n += v.n;
+        c.plt = Math.round(((c.plt || 0) + (v.plt || 0)) * 100) / 100;
+        if (!c.per && v.per) c.per = v.per;
         if (!c.d && v.d) c.d = v.d;
         if (!c.c && v.c) c.c = v.c;
       });
       merged.rows += data.rowCount || 0;
+      merged.totalPlt = Math.round((merged.totalPlt + (data.totalPlt || 0)) * 10) / 10;
       done.push(t.name || t.code);
     }
     merged.cellCount = Object.keys(merged.cells).length;
@@ -4157,7 +4159,7 @@ async function fetchGaonInventory() {
     renderRackForm();
     if (twinViewMode === "view") render3DTwin();
     if (status) {
-      status.textContent = `gaon 연동 ${merged.cellCount}셀 (${merged.rows}행) · 화주 ${done.length}곳`;
+      status.textContent = `gaon 연동 ${merged.cellCount}셀 · ${merged.totalPlt.toLocaleString("ko-KR")} PLT · 화주 ${done.length}곳`;
       status.classList.add("linked");
     }
   } catch (err) {
@@ -4393,7 +4395,8 @@ function renderRackForm() {
     if (hint) {
       if (inv && el.cellPrefix) {
         const occ = occupiedForRack(inv, el);
-        hint.textContent = `실재고 ${occ.count}/${el.len * (el.levels || TWIN_LEVELS)}칸`;
+        const plt = Math.round(occ.plt * 10) / 10;
+        hint.textContent = `실재고 ${occ.count}/${el.len * (el.levels || TWIN_LEVELS)}칸` + (plt ? ` · ${plt} PLT` : "");
       } else {
         hint.textContent = "";
       }
@@ -4613,6 +4616,7 @@ function bindRackEditor() {
   });
   $("#inventoryUpload")?.addEventListener("change", uploadInventory);
   $("#gaonFetch")?.addEventListener("click", fetchGaonInventory);
+  $("#gaonShippers")?.addEventListener("click", () => manageGaonShippers(twinActiveCenter()));
   $("#twinPhotoUpload")?.addEventListener("change", uploadCenterPhoto);
   // 배경 도면 맞춤(전체/가로/세로 배율·이동)
   const curBg = () => rackBgView(getFloorplan(twinActiveCenter(), twinActiveFloor()));

@@ -94,6 +94,7 @@ class Handler(SimpleHTTPRequestHandler):
                         "date": d_to,
                         "rowCount": res["rowCount"],
                         "cellCount": res["inventory"]["cellCount"],
+                        "totalPlt": res["inventory"].get("totalPlt", 0),
                         "inventory": res["inventory"],
                         "prefixes": res["summary"]["prefixes"],
                         "byCustomer": res["summary"]["byCustomer"],
