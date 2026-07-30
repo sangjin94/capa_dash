@@ -2658,3 +2658,6 @@ label textarea {
 .gaon-btn:hover { background: #1d3527; }
 .layout-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; }
 .layout-tools[hidden] { display: none; }
+.danger-mini { padding: 2px 8px; font-size: 12px; border-radius: 6px; cursor: pointer;
+  background: #3a1f26; color: #f0a8b8; border: 1px solid rgba(240,120,150,.35); }
+.danger-mini:hover { background: #4d2731; }

@@ -309,6 +309,7 @@ function loadState() {
       lastMarketCode: parsed.lastMarketCode || "",
       layoutToolsOpen: !!parsed.layoutToolsOpen,
       gaonUserId: parsed.gaonUserId || "",
+      gaonShippers: parsed.gaonShippers || {},
     };
   } catch {
     return structuredClone(defaultState);
@@ -3989,6 +3990,63 @@ const CENTER_WMS_CODE = { 남이천1센터: "0000200" };
 function centerWmsCode(center) {
   return (state.centerWmsCodes && state.centerWmsCodes[center]) || CENTER_WMS_CODE[center] || "";
 }
+// 센터별 gaon 화주 목록 — 코드+이름을 저장해두고 개별/일괄 조회에 사용
+function gaonShipperList(center) {
+  if (!state.gaonShippers) state.gaonShippers = {};
+  if (!Array.isArray(state.gaonShippers[center])) state.gaonShippers[center] = [];
+  return state.gaonShippers[center];
+}
+function manageGaonShippers(center) {
+  const list = gaonShipperList(center);
+  const raw = window.prompt(
+    `${center} 화주 목록 (코드,이름 을 줄바꿈으로 구분)\n` +
+      `예)\n2151,바이오포트코리아\n2155,윌리엄그랜트앤선즈\n\n` +
+      `비우고 확인하면 목록을 모두 지웁니다.`,
+    list.map((s) => `${s.code},${s.name || ""}`).join("\n"),
+  );
+  if (raw === null) return null;
+  const next = raw
+    .split(/[\n;]+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [code, ...rest] = line.split(/[,\t]/);
+      return { code: (code || "").trim(), name: rest.join(",").trim() };
+    })
+    .filter((s) => s.code);
+  state.gaonShippers[center] = next;
+  saveState();
+  return next;
+}
+// 조회 대상 화주 선택 — 저장된 목록에서 고르거나 전체 일괄
+function pickGaonShippers(center) {
+  let list = gaonShipperList(center);
+  if (!list.length) {
+    alert(`${center}에 저장된 화주가 없습니다.\n먼저 화주 목록을 등록해 주세요.`);
+    list = manageGaonShippers(center) || [];
+    if (!list.length) return null;
+  }
+  const menu =
+    list.map((s, i) => `${i + 1}) ${s.code} ${s.name || ""}`).join("\n") +
+    `\n\nA) 전체 ${list.length}곳 일괄 조회\nE) 화주 목록 편집`;
+  const ans = (window.prompt(`${center} — 조회할 화주를 고르세요.\n\n${menu}`, "A") || "").trim();
+  if (!ans) return null;
+  if (ans.toUpperCase() === "E") {
+    const next = manageGaonShippers(center);
+    return next && next.length ? pickGaonShippers(center) : null;
+  }
+  if (ans.toUpperCase() === "A") return list;
+  const picks = ans
+    .split(/[,\s]+/)
+    .map((n) => list[parseInt(n, 10) - 1])
+    .filter(Boolean);
+  if (!picks.length) {
+    alert("선택이 올바르지 않습니다.");
+    return null;
+  }
+  return picks;
+}
+
 // gaon 로그인 — 사번/비밀번호는 중계 서버 메모리에만 유지되고 저장되지 않는다
 async function gaonLogin() {
   const id = (window.prompt("gaon 사번(사용자 ID)", state.gaonUserId || "") || "").trim();
@@ -4025,30 +4083,47 @@ async function fetchGaonInventory() {
     if (!state.centerWmsCodes) state.centerWmsCodes = {};
     state.centerWmsCodes[center] = wh;
   }
-  const market = (window.prompt("화주코드(MARKET_CODE)를 입력하세요. 비우면 센터 전체 조회", state.lastMarketCode || "") || "").trim();
-  state.lastMarketCode = market;
+  // 조회할 화주 선택 (센터 전체 조회는 범위가 모호해 제공하지 않음)
+  const targets = pickGaonShippers(center);
+  if (!targets || !targets.length) return;
   const today = new Date();
   const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
-  if (status) status.textContent = "gaon 재고 조회 중…";
   try {
-    const url = `/api/gaon/inventory?warehouse=${encodeURIComponent(wh)}&market=${encodeURIComponent(market)}&date=${ymd}`;
-    let res = await fetch(url);
-    let data = await res.json().catch(() => ({ ok: false, error: `응답 오류 (HTTP ${res.status})` }));
-    // 로그인이 필요하면 gaon 계정으로 로그인 후 재시도 (비밀번호는 서버 메모리에만 유지)
-    if (!data.ok && data.needLogin) {
-      if (!(await gaonLogin())) return;
-      if (status) status.textContent = "gaon 재고 조회 중…";
-      res = await fetch(url);
-      data = await res.json().catch(() => ({ ok: false, error: `응답 오류 (HTTP ${res.status})` }));
+    const merged = { fileName: "", importedAt: new Date().toISOString(), rows: 0, cellCount: 0, cells: {} };
+    const done = [];
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
+      if (status) status.textContent = `gaon 재고 조회 중… (${i + 1}/${targets.length}) ${t.name || t.code}`;
+      const url = `/api/gaon/inventory?warehouse=${encodeURIComponent(wh)}&market=${encodeURIComponent(t.code)}&date=${ymd}`;
+      let res = await fetch(url);
+      let data = await res.json().catch(() => ({ ok: false, error: `응답 오류 (HTTP ${res.status})` }));
+      // 로그인이 필요하면 gaon 계정으로 로그인 후 재시도 (비밀번호는 서버 메모리에만 유지)
+      if (!data.ok && data.needLogin) {
+        if (!(await gaonLogin())) return;
+        res = await fetch(url);
+        data = await res.json().catch(() => ({ ok: false, error: `응답 오류 (HTTP ${res.status})` }));
+      }
+      if (!data.ok) throw new Error(`${t.name || t.code}: ${data.error || `HTTP ${res.status}`}`);
+      // 여러 화주 결과를 셀 단위로 합침
+      Object.entries(data.inventory.cells || {}).forEach(([code, v]) => {
+        const c = merged.cells[code] || (merged.cells[code] = { q: 0, n: 0, d: v.d, c: v.c });
+        c.q += v.q;
+        c.n += v.n;
+        if (!c.d && v.d) c.d = v.d;
+        if (!c.c && v.c) c.c = v.c;
+      });
+      merged.rows += data.rowCount || 0;
+      done.push(t.name || t.code);
     }
-    if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    state.inventory[center] = data.inventory;
+    merged.cellCount = Object.keys(merged.cells).length;
+    merged.fileName = `gaon ${wh} · ${done.join(", ")} · ${ymd}`;
+    state.inventory[center] = merged;
     saveState();
     renderInventoryStatus();
     renderRackForm();
     if (twinViewMode === "view") render3DTwin();
     if (status) {
-      status.textContent = `gaon 연동 ${data.cellCount}셀 (${data.rowCount}행)`;
+      status.textContent = `gaon 연동 ${merged.cellCount}셀 (${merged.rows}행) · 화주 ${done.length}곳`;
       status.classList.add("linked");
     }
   } catch (err) {
@@ -4427,10 +4502,28 @@ function deleteSelectedRack() {
 }
 
 function clearAllRacks() {
-  const layout = getRackLayout(twinActiveCenter(), twinActiveFloor());
-  if (!layout.racks.length) return;
-  if (!window.confirm("이 센터·층의 모든 배치 요소를 삭제할까요?\n(‘되돌리기’로 복구할 수 있습니다)")) return;
-  backupLayout(twinActiveCenter(), twinActiveFloor());
+  const center = twinActiveCenter();
+  const floor = twinActiveFloor();
+  const layout = getRackLayout(center, floor);
+  if (!layout.racks.length) {
+    alert("삭제할 배치가 없습니다.");
+    return;
+  }
+  // 실수 삭제 방지 — 개수를 보여주고 확인 문구를 직접 입력받는다
+  const n = layout.racks.length;
+  const racks = layout.racks.filter((e) => e.type === "rack").length;
+  const answer = window.prompt(
+    `⚠ ${center} ${floor}의 배치 ${n}개(랙 ${racks}개)를 모두 삭제합니다.\n` +
+      `이 작업은 백업되며 '↩ 되돌리기'로 복구할 수 있습니다.\n\n` +
+      `계속하려면 아래에 삭제 를 입력하세요.`,
+    "",
+  );
+  if (answer === null) return;
+  if (answer.trim() !== "삭제") {
+    alert("입력이 일치하지 않아 취소했습니다.");
+    return;
+  }
+  backupLayout(center, floor);
   layout.racks = [];
   selectedRackId = null;
   markLayoutEdited(twinActiveCenter(), twinActiveFloor());
@@ -4607,10 +4700,20 @@ function bindRackEditor() {
     if (twinViewMode !== "edit" || !selectedRackId) return;
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    // Del / Backspace → 선택 요소 삭제
+    if (e.key === "Delete" || e.key === "Backspace") {
+      const el = selectedRack();
+      if (!el) return;
+      e.preventDefault();
+      deleteSelectedRack();
+      return;
+    }
+    // 화살표 → 1칸 이동 (Shift 함께 누르면 5칸)
     const map = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     const d = map[e.key];
     if (!d) return;
-    if (nudgeSelectedElement(d[0], d[1])) e.preventDefault();
+    const step = e.shiftKey ? 5 : 1;
+    if (nudgeSelectedElement(d[0] * step, d[1] * step)) e.preventDefault();
   });
 }
 

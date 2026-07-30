@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=23" />
+    <link rel="stylesheet" href="./styles.css?v=25" />
   </head>
   <body>
     <div class="app-shell">
@@ -348,9 +348,10 @@
                       <label class="ghost mini file-inline" title="백업 파일에서 배치를 복원합니다">📂 백업 불러오기
                         <input id="layoutImport" type="file" accept=".json" />
                       </label>
+                      <button class="mini danger-mini" id="rackClearAll" type="button" title="이 층의 모든 배치를 삭제합니다(확인 문구 입력 필요)">전체 삭제</button>
                     </div>
                   </div>
-                  <span class="rack-editor-hint">빈 곳에서 <b>드래그</b>하면 새 요소를 그리고, <b>이미 있는 요소를 드래그</b>하면 이동합니다(선택 후 <b>화살표 키</b>로 1칸 미세 이동). 파일 업로드는 아래 <b>센터 사진</b> 옆.</span>
+                  <span class="rack-editor-hint">빈 곳 <b>드래그</b>=새 요소, <b>요소 드래그</b>=이동. 선택 후 <b>화살표</b>=1칸 이동(<b>Shift+화살표</b>=5칸), <b>Del</b>=삭제. 파일 업로드는 아래 <b>센터 사진</b> 옆.</span>
                 </div>
                 <div class="rack-type-picker" id="rackTypePicker"></div>
                 <div class="rack-stage" id="rackStage">
@@ -364,7 +365,6 @@
               <aside class="rack-editor-side">
                 <div class="rack-side-head">
                   <strong>배치된 랙</strong>
-                  <button class="ghost" id="rackClearAll" type="button">전체 삭제</button>
                 </div>
                 <div class="rack-capa-summary" id="rackCapaSummary" title="랙 1칸(베이) × 1단 = 1 PLT"></div>
                 <div class="rack-list" id="rackList"></div>
@@ -549,6 +549,6 @@
     <script src="./assets/vendor/OrbitControls.js"></script>
     <script src="./assets/vendor/xlsx.full.min.js"></script>
     <script src="./assets/vendor/pdf.min.js"></script>
-    <script src="./app.js?v=23"></script>
+    <script src="./app.js?v=25"></script>
   </body>
 </html>

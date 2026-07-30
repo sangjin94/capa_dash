@@ -63,14 +63,18 @@ def _esc(v):
 
 
 def login_body(company, user_id, user_pw):
+    """실제 로그인 폼(frmLogin.xfdl.js)과 동일한 파라미터 구성.
+    sUserPwd 는 입력값 그대로 전송한다(클라이언트 암호화 없음).
+    """
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<Root xmlns="{NS}">\n'
         "  <Parameters>\n"
         f'    <Parameter id="sCompanyCd">{_esc(company)}</Parameter>\n'
         f'    <Parameter id="sUserId">{_esc(user_id)}</Parameter>\n'
-        f'    <Parameter id="sUserPw">{_esc(user_pw)}</Parameter>\n'
-        '    <Parameter id="sLangCd">ko_KR</Parameter>\n'
+        f'    <Parameter id="sUserPwd">{_esc(user_pw)}</Parameter>\n'
+        '    <Parameter id="sDomain">ko_KR</Parameter>\n'
+        '    <Parameter id="sWebViewType">desktop</Parameter>\n'
         '    <Parameter id="__tcsFormId">frmLogin</Parameter>\n'
         "  </Parameters>\n"
         "</Root>"
@@ -166,11 +170,16 @@ def parse_inventory(xml_text, dataset="dsList02"):
 
 
 def parse_ssv_error(text):
-    """오류 응답(SSV 형식) → (code, msg). 정상 XML이면 (None, None)."""
+    """SSV 응답 → (code, msg). 정상 XML이면 (None, None).
+
+    두 가지 형태가 모두 온다:
+      성공: SSV:utf-8ErrorCode=0ErrorMsg=SUCC...
+      오류: SSV:utf-8ErrorCode:string=-2ErrorMsg:string=로그인 정보가 없습니다.
+    """
     if not text.startswith("SSV:"):
         return None, None
-    code = re.search(r"ErrorCode:string=(-?\d+)", text)
-    msg = re.search(r"ErrorMsg:string=([^\x00-\x1f]*)", text)
+    code = re.search(r"ErrorCode(?::string)?=(-?\d+)", text)
+    msg = re.search(r"ErrorMsg(?::string)?=([^\x00-\x1f]*)", text)
     return (code.group(1) if code else "?"), (msg.group(1).strip() if msg else "")
 
 
