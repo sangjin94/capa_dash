@@ -3,7 +3,7 @@ const LEGACY_STORAGE_KEY = "hx-center-capa-v1";
 const ALL = "전체";
 const FLOORPLAN_COLS = 216;
 const FLOORPLAN_ROWS = 126;
-const TWIN_LEVELS = 3; // 랙 기본 단수 (파일 상단에서 선언 — 초기 시드에서 참조)
+const TWIN_LEVELS = 4; // 랙 기본 단수 (파일 상단에서 선언 — 초기 시드에서 참조)
 const ZONE_COLORS = [
   "#f59e0b",
   "#2563eb",
@@ -39,7 +39,7 @@ const DEFAULT_FLOORPLANS = {
 };
 // floorplanKey → 기본 랙 배치(도면에서 1차 추출). 사용자가 편집하면 그 값이 우선.
 // 기본 랙/기둥/벽 배치 버전 — 올리면 기존 브라우저도 새 배치로 재시드됨
-const DEFAULT_RACKS_VERSION = 12;
+const DEFAULT_RACKS_VERSION = 13;
 // 남이천1센터 구조 기둥 — 같은 건물이라 전 층 공통(도면의 노란 마커에서 검출)
 const NAMI1_COLUMNS = [
   {type:"column",col:166,row:22,w:1,d:1}, {type:"column",col:167,row:22,w:1,d:1}, {type:"column",col:169,row:22,w:1,d:1}, {type:"column",col:172,row:22,w:1,d:1},
@@ -3507,7 +3507,7 @@ function buildTwinColumn(group, spec, color, batch) {
   const d = spec.d || 1;
   const cx = spec.col + w / 2;
   const cz = spec.row + d / 2;
-  const H = 5.6; // 랙(4.2)보다 높게 — 구조물로 인식
+  const H = 6.8; // 랙(4단=5.6)·벽(6.2)보다 높게 — 구조물로 인식
   const t = Math.round(Math.min(0.85, Math.max(0.42, Math.min(w, d) * 0.6)) * 100) / 100;
   const hex = "#" + new THREE.Color(color).getHexString();
   if (!res.colMatByColor.has(hex)) {
@@ -3540,7 +3540,7 @@ function buildTwinColumn(group, spec, color, batch) {
 function buildTwinWall(group, spec, color) {
   const w = spec.w || 1;
   const d = spec.d || 1;
-  const H = spec.height ? spec.height * TWIN_LEVEL_H : 5.0; // 랙(4.2)보다 높고 기둥(5.6)보다 낮게
+  const H = spec.height ? spec.height * TWIN_LEVEL_H : 6.2; // 랙(4단=5.6)보다 높고 기둥(6.8)보다 낮게
   const th = 0.35;
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.05, transparent: true, opacity: 0.9 });
   const edgeMat = new THREE.LineBasicMaterial({ color: 0x2a3340 });
