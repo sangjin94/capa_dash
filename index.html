@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=21" />
+    <link rel="stylesheet" href="./styles.css?v=22" />
   </head>
   <body>
     <div class="app-shell">
@@ -436,6 +436,7 @@
                   <label class="file-button small">재고 파일(xlsx)
                     <input id="inventoryUpload" type="file" accept=".xlsx,.xls,.csv" />
                   </label>
+                  <button type="button" id="gaonFetch" class="file-button small gaon-btn" title="gaon(전산)에서 셀별 재고를 직접 불러옵니다. 중계 서버(server/serve.py) 필요">🔄 gaon 재고</button>
                   <label class="file-button small">사진 업로드/변경
                     <input id="twinPhotoUpload" type="file" accept="image/*" />
                   </label>
@@ -547,6 +548,6 @@
     <script src="./assets/vendor/OrbitControls.js"></script>
     <script src="./assets/vendor/xlsx.full.min.js"></script>
     <script src="./assets/vendor/pdf.min.js"></script>
-    <script src="./app.js?v=21"></script>
+    <script src="./app.js?v=22"></script>
   </body>
 </html>

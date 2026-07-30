@@ -305,6 +305,8 @@ function loadState() {
       bgAdjustOpen: !!parsed.bgAdjustOpen,
       twinLabels: parsed.twinLabels !== false,
       rackLayoutsBackup: parsed.rackLayoutsBackup || {},
+      centerWmsCodes: parsed.centerWmsCodes || {},
+      lastMarketCode: parsed.lastMarketCode || "",
     };
   } catch {
     return structuredClone(defaultState);
@@ -3979,6 +3981,54 @@ function renderInventoryStatus() {
   }
 }
 
+// ── gaon(WMS) 재고 직접 연동 — server/serve.py 중계 서버가 켜져 있을 때 사용
+// 센터 → WMS 창고코드. 확인된 것만 채우고, 없으면 입력받아 저장한다.
+const CENTER_WMS_CODE = { 남이천1센터: "0000200" };
+function centerWmsCode(center) {
+  return (state.centerWmsCodes && state.centerWmsCodes[center]) || CENTER_WMS_CODE[center] || "";
+}
+async function fetchGaonInventory() {
+  const center = twinActiveCenter();
+  const status = $("#inventoryStatus");
+  let wh = centerWmsCode(center);
+  if (!wh) {
+    wh = (window.prompt(`${center}의 WMS 창고코드를 입력하세요 (예: 0000200)`) || "").trim();
+    if (!wh) return;
+    if (!state.centerWmsCodes) state.centerWmsCodes = {};
+    state.centerWmsCodes[center] = wh;
+  }
+  const market = (window.prompt("화주코드(MARKET_CODE)를 입력하세요. 비우면 센터 전체 조회", state.lastMarketCode || "") || "").trim();
+  state.lastMarketCode = market;
+  const today = new Date();
+  const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
+  if (status) status.textContent = "gaon 재고 조회 중…";
+  try {
+    const url = `/api/gaon/inventory?warehouse=${encodeURIComponent(wh)}&market=${encodeURIComponent(market)}&date=${ymd}`;
+    const res = await fetch(url);
+    const data = await res.json().catch(() => ({ ok: false, error: `응답 오류 (HTTP ${res.status})` }));
+    if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    state.inventory[center] = data.inventory;
+    saveState();
+    renderInventoryStatus();
+    renderRackForm();
+    if (twinViewMode === "view") render3DTwin();
+    if (status) {
+      status.textContent = `gaon 연동 ${data.cellCount}셀 (${data.rowCount}행)`;
+      status.classList.add("linked");
+    }
+  } catch (err) {
+    if (status) {
+      status.textContent = "gaon 연동 실패: " + err.message;
+      status.classList.remove("linked");
+    }
+    alert(
+      "gaon 재고를 불러오지 못했습니다.\n" +
+        err.message +
+        "\n\n중계 서버가 필요합니다:\n  1) 명령창에서 capa_dash 폴더로 이동\n  2) set GAON_ID=사번  /  set GAON_PW=비밀번호\n  3) py server\\serve.py\n  4) http://localhost:5180 으로 접속",
+    );
+  }
+}
+
 async function uploadInventory(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -4397,6 +4447,7 @@ function bindRackEditor() {
     }
   });
   $("#inventoryUpload")?.addEventListener("change", uploadInventory);
+  $("#gaonFetch")?.addEventListener("click", fetchGaonInventory);
   $("#twinPhotoUpload")?.addEventListener("change", uploadCenterPhoto);
   // 배경 도면 맞춤(전체/가로/세로 배율·이동)
   const curBg = () => rackBgView(getFloorplan(twinActiveCenter(), twinActiveFloor()));

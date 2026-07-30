@@ -6,3 +6,7 @@ _dong_icheon_floorplan_extract/
 .DS_Store
 Thumbs.db
 *.log
+
+# gaon 연동 (자격증명/픽스처 유출 방지)
+server/_fixture_*.json
+.env
