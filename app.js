@@ -39,10 +39,10 @@ const DEFAULT_FLOORPLANS = {
 };
 // floorplanKey → 기본 랙 배치(도면에서 1차 추출). 사용자가 편집하면 그 값이 우선.
 // 기본 랙/기둥/벽 배치 버전 — 올리면 기존 브라우저도 새 배치로 재시드됨
-const DEFAULT_RACKS_VERSION = 8;
+const DEFAULT_RACKS_VERSION = 9;
 const DEFAULT_RACK_LAYOUTS = {
-  // 남이출1센터 지하1층 — 도면 픽셀에서 216x126 객자로 진통 산정
-  남이출1센터: [
+  // 남이천1센터 지하1층 — 도면 픽셀에서 216x126 객자로 진통 산정
+  남이천1센터: [
     {type:"rack",dir:"h",col:7,row:32,len:24},{type:"rack",dir:"h",col:7,row:33,len:24},{type:"rack",dir:"h",col:7,row:37,len:20},
     {type:"rack",dir:"h",col:7,row:38,len:20},{type:"rack",dir:"h",col:7,row:42,len:29},{type:"rack",dir:"h",col:7,row:44,len:29},
     {type:"rack",dir:"h",col:7,row:48,len:20},{type:"rack",dir:"h",col:7,row:49,len:20},{type:"rack",dir:"h",col:7,row:52,len:24},
@@ -121,7 +121,7 @@ const DEFAULT_RACK_LAYOUTS = {
     {type:"column",col:61,row:104,w:2,d:2},{type:"column",col:55,row:106,w:2,d:2},{type:"column",col:139,row:114,w:2,d:2},
     {type:"column",col:117,row:115,w:2,d:2},{type:"column",col:128,row:115,w:2,d:2},
   ],
-  "남이출1센터||지상2층": [
+  "남이천1센터||지상2층": [
     {type:"rack",dir:"h",col:120,row:32,len:44},{type:"rack",dir:"h",col:120,row:33,len:44},{type:"rack",dir:"h",col:85,row:38,len:32},
     {type:"rack",dir:"h",col:85,row:39,len:32},{type:"rack",dir:"h",col:57,row:43,len:59},{type:"rack",dir:"h",col:57,row:44,len:59},
     {type:"rack",dir:"h",col:57,row:47,len:60},{type:"rack",dir:"h",col:57,row:48,len:60},{type:"rack",dir:"h",col:119,row:50,len:20},
@@ -134,7 +134,7 @@ const DEFAULT_RACK_LAYOUTS = {
     {type:"rack",dir:"h",col:58,row:96,len:48},{type:"rack",dir:"h",col:147,row:101,len:55},{type:"rack",dir:"h",col:147,row:106,len:55},
     {type:"rack",dir:"h",col:108,row:113,len:30},{type:"rack",dir:"h",col:108,row:115,len:30},
   ],
-  "남이출1센터||지상4층": [
+  "남이천1센터||지상4층": [
     {type:"rack",dir:"h",col:74,row:37,len:42},{type:"rack",dir:"h",col:74,row:38,len:42},{type:"rack",dir:"h",col:40,row:42,len:90},
     {type:"rack",dir:"h",col:40,row:43,len:90},{type:"rack",dir:"h",col:41,row:47,len:89},{type:"rack",dir:"h",col:41,row:48,len:89},
     {type:"rack",dir:"h",col:40,row:52,len:90},{type:"rack",dir:"h",col:40,row:53,len:90},{type:"rack",dir:"h",col:40,row:55,len:90},
@@ -262,6 +262,7 @@ function loadState() {
       kakaoApiKey: parsed.kakaoApiKey || "",
       defaultRacksSeeded: parsed.defaultRacksSeeded || false,
       defaultRacksVersion: parsed.defaultRacksVersion || 0,
+      bgAdjustOpen: !!parsed.bgAdjustOpen,
     };
   } catch {
     return structuredClone(defaultState);
@@ -346,6 +347,18 @@ function ensureBaselineState() {
       state.centerFloors[center] = DEFAULT_CENTER_FLOORS[center].slice();
       changed = true;
     }
+  });
+  // 존재하지 않는 센터의 잔여 배치 정리 (과거 잘못된 키로 저장된 데이터 제거)
+  const validKeys = new Set();
+  state.centers.forEach((c) => getCenterFloors(c).forEach((f) => validKeys.add(floorplanKey(c, f))));
+  ["rackLayouts", "floorplans"].forEach((field) => {
+    Object.keys(state[field] || {}).forEach((key) => {
+      const center = key.split("||")[0];
+      if (!state.centers.includes(center)) {
+        delete state[field][key];
+        changed = true;
+      }
+    });
   });
   // 기본 랙/기둥/벽 배치 — 버전이 바뀌면 기본 배치 키를 새로 시드(좌표·도면 갱신 반영)
   if (state.defaultRacksVersion !== DEFAULT_RACKS_VERSION) {
@@ -3777,12 +3790,74 @@ function refreshRackLayer() {
         `<div class="rack-item ${isAreaElement(r) ? "area" : ""} ${r.id === selectedRackId ? "selected" : ""}" data-rack-id="${r.id}" style="${elementStyle(r)}"><span>${elementLabel(r)}</span></div>`,
     )
     .join("");
-  layer.querySelectorAll(".rack-item").forEach((el) =>
+  layer.querySelectorAll(".rack-item").forEach((el) => {
     el.addEventListener("click", (e) => {
       e.stopPropagation();
       selectRack(el.dataset.rackId);
-    }),
-  );
+    });
+    el.addEventListener("pointerdown", (e) => startElementMove(e, el.dataset.rackId));
+  });
+}
+
+// 배치된 요소를 드래그로 이동 (격자 단위 스냅)
+let elementMove = null;
+function startElementMove(event, id) {
+  if (twinViewMode !== "edit") return;
+  const grid = $("#rackGrid");
+  if (!grid) return;
+  const el = getRackLayout(twinActiveCenter(), twinActiveFloor()).racks.find((r) => r.id === id);
+  if (!el) return;
+  event.preventDefault();
+  event.stopPropagation(); // 그리드의 '새로 그리기' 드래그와 충돌 방지
+  selectRack(id);
+  const start = cellFromPointer(grid, event);
+  elementMove = { id, start, col0: el.col, row0: el.row, moved: false };
+  const dom = $("#rackLayer")?.querySelector(`[data-rack-id="${id}"]`);
+  try {
+    if (event.pointerId != null && dom) dom.setPointerCapture(event.pointerId);
+  } catch {
+    /* 캡처 실패 무시 */
+  }
+  const onMove = (e) => {
+    if (!elementMove) return;
+    const cur = cellFromPointer(grid, e);
+    const dCol = cur.col - elementMove.start.col;
+    const dRow = cur.row - elementMove.start.row;
+    if (!dCol && !dRow && !elementMove.moved) return;
+    const target = getRackLayout(twinActiveCenter(), twinActiveFloor()).racks.find((r) => r.id === elementMove.id);
+    if (!target) return;
+    const area = isAreaElement(target);
+    const w = area ? target.w : target.dir === "h" ? target.len : 1;
+    const h = area ? target.d : target.dir === "v" ? target.len : 1;
+    target.col = Math.max(0, Math.min(FLOORPLAN_COLS - w, elementMove.col0 + dCol));
+    target.row = Math.max(0, Math.min(FLOORPLAN_ROWS - h, elementMove.row0 + dRow));
+    elementMove.moved = true;
+    refreshRackLayer();
+    renderRackForm();
+  };
+  const onUp = () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    if (elementMove?.moved) saveState();
+    elementMove = null;
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+}
+
+// 선택 요소를 화살표 키로 1칸씩 이동
+function nudgeSelectedElement(dCol, dRow) {
+  const el = selectedRack();
+  if (!el) return false;
+  const area = isAreaElement(el);
+  const w = area ? el.w : el.dir === "h" ? el.len : 1;
+  const h = area ? el.d : el.dir === "v" ? el.len : 1;
+  el.col = Math.max(0, Math.min(FLOORPLAN_COLS - w, el.col + dCol));
+  el.row = Math.max(0, Math.min(FLOORPLAN_ROWS - h, el.row + dRow));
+  saveState();
+  refreshRackLayer();
+  renderRackForm();
+  return true;
 }
 
 function refreshRackList() {
@@ -4061,6 +4136,23 @@ function bindRackEditor() {
   $("#bgWminus")?.addEventListener("click", () => updateRackBgView({ dsx: -1 }));
   $("#bgHplus")?.addEventListener("click", () => updateRackBgView({ dsy: 1 }));
   $("#bgHminus")?.addEventListener("click", () => updateRackBgView({ dsy: -1 }));
+  // 도면 맞춤 도구 접기/펼치기 (자주 안 쓰는 기능 — 기본 접힘, 선택 상태 저장)
+  const applyBgFold = () => {
+    const body = $("#bgAdjustBody");
+    const btn = $("#bgAdjustToggle");
+    if (!body || !btn) return;
+    const open = !!state.bgAdjustOpen;
+    body.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    btn.textContent = open ? "도면 맞춤 ▴" : "도면 맞춤 ▾";
+    btn.classList.toggle("open", open);
+  };
+  $("#bgAdjustToggle")?.addEventListener("click", () => {
+    state.bgAdjustOpen = !state.bgAdjustOpen;
+    saveState();
+    applyBgFold();
+  });
+  applyBgFold();
   $("#bgToggle")?.addEventListener("click", () => {
     const v = rackBgView(getFloorplan(twinActiveCenter(), twinActiveFloor()));
     v.off = !v.off;
@@ -4106,6 +4198,16 @@ function bindRackEditor() {
   $("#rackDelete")?.addEventListener("click", deleteSelectedRack);
   $("#rackClearAll")?.addEventListener("click", clearAllRacks);
   $("#rackFloorplanUpload")?.addEventListener("change", uploadRackFloorplan);
+  // 화살표 키로 선택 요소 미세 이동 (편집 모드, 입력창 포커스가 아닐 때)
+  window.addEventListener("keydown", (e) => {
+    if (twinViewMode !== "edit" || !selectedRackId) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    const map = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const d = map[e.key];
+    if (!d) return;
+    if (nudgeSelectedElement(d[0], d[1])) e.preventDefault();
+  });
 }
 
 if (!localStorage.getItem(STORAGE_KEY)) {
