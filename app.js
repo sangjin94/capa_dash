@@ -303,6 +303,7 @@ function loadState() {
       defaultRacksSeeded: parsed.defaultRacksSeeded || false,
       defaultRacksVersion: parsed.defaultRacksVersion || 0,
       bgAdjustOpen: !!parsed.bgAdjustOpen,
+      twinLabels: parsed.twinLabels !== false,
     };
   } catch {
     return structuredClone(defaultState);
@@ -2892,7 +2893,7 @@ function render3DTwin() {
           d: Math.max(1, Math.round(number(e.d))),
           height: Math.max(1, Math.round(number(e.height) || 1)),
           color: e.color || info.color,
-          name: e.name || info.label,
+          name: e.name || "", // 이름을 지정하지 않았으면 빈값 유지 (라벨 표시 판단용)
         });
         areaLegend.set(info.label, e.color || info.color);
       } else {
@@ -2920,7 +2921,7 @@ function render3DTwin() {
           fill,
           placements: placement ? placement.placements : null,
           customer: e.customer || "미지정",
-          name: e.name || "랙",
+          name: e.name || "", // 이름 미지정 시 빈값 (라벨은 이름 있을 때만 표시)
           capa,
           _slots: len * levels,
           _occCount: placement ? placement.count : null,
@@ -3355,6 +3356,18 @@ function buildTwinBlocks(items) {
     };
     group.add(pick);
     twinState.pick.push(pick);
+    // 이름(또는 고객사)을 지정한 랙은 3D에도 이름 표시
+    const rackLabel = (spec.name && String(spec.name).trim()) || "";
+    if (state.twinLabels !== false && rackLabel) {
+      const label = makeTwinLabel(rackLabel);
+      label.position.set(
+        horiz ? spec.col + spec.len / 2 : spec.col + 0.5,
+        H + 0.8,
+        horiz ? spec.row + 0.5 : spec.row + spec.len / 2,
+      );
+      group.add(label);
+      twinState.labels.push(label);
+    }
   });
   twinBatchFlush(batch, group);
 }
@@ -3381,7 +3394,10 @@ function buildTwinArea(group, res, spec, batch) {
   group.add(pick);
   twinState.pick.push(pick);
 
-  if (type !== "aisle" && type !== "column" && type !== "wall") {
+  // 이름을 직접 지정했으면 어떤 타입이든 표시 (벽/챔버·기둥 포함)
+  const named = !!(spec.name && String(spec.name).trim());
+  const showLabel = state.twinLabels !== false && (named || (type !== "aisle" && type !== "column" && type !== "wall"));
+  if (showLabel) {
     const label = makeTwinLabel(spec.name || elementTypeInfo(type).label);
     label.position.set(cx, H + 0.8, cz);
     group.add(label);
@@ -4358,6 +4374,21 @@ function bindRackEditor() {
   $("#rackDelete")?.addEventListener("click", deleteSelectedRack);
   $("#rackClearAll")?.addEventListener("click", clearAllRacks);
   $("#rackFloorplanUpload")?.addEventListener("change", uploadRackFloorplan);
+  // 3D 이름 표시 토글
+  const syncLabelToggle = () => {
+    const btn = $("#twinLabelToggle");
+    if (!btn) return;
+    const on = state.twinLabels !== false;
+    btn.textContent = on ? "🏷 이름 표시" : "🏷 이름 숨김";
+    btn.classList.toggle("off", !on);
+  };
+  $("#twinLabelToggle")?.addEventListener("click", () => {
+    state.twinLabels = state.twinLabels === false;
+    saveState();
+    syncLabelToggle();
+    if (twinViewMode === "view") render3DTwin();
+  });
+  syncLabelToggle();
   $("#twinFullscreen")?.addEventListener("click", toggleTwinFullscreen);
   document.addEventListener("fullscreenchange", syncTwinFullscreenUI);
   document.addEventListener("webkitfullscreenchange", syncTwinFullscreenUI);
