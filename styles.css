@@ -2812,3 +2812,29 @@ label textarea {
 .inv-prefix-input { width: 92px; }
 .inv-prefix-input:focus, .inv-assign:focus { outline: 2px solid rgba(11, 92, 171, .3); border-color: var(--brand); }
 .inv-more { display: flex; justify-content: center; padding: 12px 0 0; }
+
+/* ── 3D 표시 요소 패널 (타입별 표시/이름표) ──────────────────────────────── */
+.twin-layers { position: relative; }
+.twin-layer-panel { position: absolute; top: calc(100% + 6px); right: 0; z-index: 12; width: 250px;
+  padding: 10px; border-radius: 10px; background: #131c2b; border: 1px solid rgba(120,150,190,.28);
+  box-shadow: 0 18px 40px rgba(0,0,0,.45); }
+.twin-layer-head { display: grid; grid-template-columns: 1fr 34px 34px; gap: 4px; padding: 0 4px 6px;
+  font-size: 11px; font-weight: 700; color: #8fa0b8; text-align: center; }
+.twin-layer-head span:first-child { text-align: left; }
+.twin-layer-row { display: grid; grid-template-columns: 1fr 34px 34px; gap: 4px; align-items: center;
+  padding: 5px 4px; border-radius: 6px; cursor: pointer; }
+.twin-layer-row:hover { background: rgba(120,160,210,.12); }
+.twin-layer-row.off .twin-layer-name { color: #6b7688; text-decoration: line-through; }
+.twin-layer-name { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: #d6e0ee; }
+.twin-layer-name .sw { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.twin-layer-row input[type="checkbox"] { justify-self: center; width: 15px; height: 15px; accent-color: #4c9ae8; cursor: pointer; }
+.twin-layer-row input[type="checkbox"]:disabled { opacity: .35; cursor: default; }
+#twinLayerReset { width: 100%; margin-top: 8px; padding: 6px; font-size: 12px;
+  border: 1px solid rgba(120,150,190,.3); border-radius: 7px; background: #1b2739; color: #cdd8e8; }
+#twinLayerReset:hover { background: #24334a; }
+.twin-fs.off { border-color: rgba(240,180,120,.45); color: #f0c48a; }
+
+/* 사선(자유선) 벽 — 얇아도 잡히도록 최소 두께 확보 */
+.rack-item.wall-free { min-height: 5px; border-radius: 1px; border-width: 1px;
+  background: color-mix(in srgb, var(--rc) 55%, transparent); }
+.rack-item.wall-free span { font-size: 8px; }

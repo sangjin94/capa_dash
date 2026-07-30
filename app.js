@@ -202,11 +202,33 @@ function materializeDefaultRack(e) {
       capa: e.capa || 0, fill: e.fill != null ? e.fill : 0.6, color: e.color || "#5ac8fa",
     };
   }
+  if (e.x1 != null) {
+    // 사선(자유선) 벽 — 두 점으로 정의
+    return {
+      id, type: e.type, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2,
+      th: e.th || WALL_TH_DEFAULT, height: e.height || 1, name: e.name || "", color: e.color || "#ef4444",
+    };
+  }
   return {
     id, type: e.type, col: e.col, row: e.row, w: e.w || 1, d: e.d || 1,
     name: e.name || "", color: e.color || (e.type === "column" ? "#9aa3b2" : e.type === "wall" ? "#ef4444" : "#64748b"), height: e.height || 1,
   };
 }
+
+// 남이천1센터 남동측 사선 외벽 — 도면 PNG에서 검출(층별로 끝점이 조금 다름)
+const NAMI1_DIAGONAL_WALLS = {
+  남이천1센터: { x1: 151.6, y1: 110.6, x2: 203.4, y2: 82.6 },
+  "남이천1센터||지상2층": { x1: 151.3, y1: 110.1, x2: 212.2, y2: 77.7 },
+  "남이천1센터||지상4층": { x1: 151.4, y1: 110.1, x2: 211.5, y2: 78.1 },
+};
+function nami1DiagWall(key) {
+  const p = NAMI1_DIAGONAL_WALLS[key];
+  return p ? { type: "wall", ...p, th: 0.6, height: 4, name: "" } : null;
+}
+// 기본 배치에도 포함시켜 '기본 배치 다시 불러오기' 때 함께 들어가게 한다
+Object.keys(NAMI1_DIAGONAL_WALLS).forEach((key) => {
+  if (Array.isArray(DEFAULT_RACK_LAYOUTS[key])) DEFAULT_RACK_LAYOUTS[key].push(nami1DiagWall(key));
+});
 const CENTER_MAP_POSITIONS = {
   남이천1센터: { x: 53.8, y: 34.6 },
   남이천2센터: { x: 54.4, y: 35.8 },
@@ -304,6 +326,8 @@ function loadState() {
       defaultRacksVersion: parsed.defaultRacksVersion || 0,
       bgAdjustOpen: !!parsed.bgAdjustOpen,
       twinLabels: parsed.twinLabels !== false,
+      twinTypeVis: parsed.twinTypeVis || {}, // 요소 타입별 3D 표시 여부 (없으면 표시)
+      twinTypeLabels: parsed.twinTypeLabels || {}, // 요소 타입별 이름표 (없으면 기존 동작)
       rackLayoutsBackup: parsed.rackLayoutsBackup || {},
       centerWmsCodes: parsed.centerWmsCodes || {},
       lastMarketCode: parsed.lastMarketCode || "",
@@ -311,6 +335,7 @@ function loadState() {
       gaonUserId: parsed.gaonUserId || "",
       gaonShippers: parsed.gaonShippers || {},
       photoPanelOpen: !!parsed.photoPanelOpen,
+      nami1DiagWalls: !!parsed.nami1DiagWalls,
     };
   } catch {
     return structuredClone(defaultState);
@@ -419,6 +444,38 @@ function ensureBaselineState() {
     });
     state.defaultRacksVersion = DEFAULT_RACKS_VERSION;
     state.defaultRacksSeeded = true;
+    changed = true;
+  }
+  // 요소 id 중복 정리 — id가 겹치면 선택·이동·삭제가 엉뚱한 요소에 적용된다
+  Object.values(state.rackLayouts || {}).forEach((layout) => {
+    if (!layout || !Array.isArray(layout.racks)) return;
+    const seen = new Set();
+    layout.racks.forEach((el, i) => {
+      if (!el.id || seen.has(el.id)) {
+        let uid = `el-fix-${i}`;
+        while (seen.has(uid)) uid += "x";
+        el.id = uid;
+        changed = true;
+      }
+      seen.add(el.id);
+    });
+  });
+  // 남이천1센터 사선 외벽 1회 추가 — 기존 배치를 덮어쓰지 않고 없을 때만 덧붙인다
+  if (!state.nami1DiagWalls) {
+    Object.keys(NAMI1_DIAGONAL_WALLS).forEach((key) => {
+      const cur = state.rackLayouts[key];
+      if (!cur || !Array.isArray(cur.racks)) return;
+      if (cur.racks.some(isFreeWall)) return; // 이미 사선 벽이 있으면 건너뜀
+      // id는 반드시 고유해야 한다 — materializeDefaultRack의 el-def-N 은 페이지 로드마다
+      // 0부터 다시 매겨져 기존 요소와 겹치고, 그러면 선택·편집이 엉뚱한 요소로 간다
+      const el = materializeDefaultRack(nami1DiagWall(key));
+      const used = new Set(cur.racks.map((r) => r.id));
+      let uid = "el-diagwall";
+      while (used.has(uid)) uid += "x";
+      el.id = uid;
+      cur.racks.push(el);
+    });
+    state.nami1DiagWalls = true;
     changed = true;
   }
   if (changed) saveState();
@@ -2895,8 +2952,14 @@ function render3DTwin() {
   const center = twinActiveCenter();
   const floor = twinActiveFloor();
   const plan = getFloorplan(center, floor);
-  const elements = (getRackLayout(center, floor).racks || []).filter((e) =>
-    elementTypeInfo(e.type).shape === "area" ? number(e.w) > 0 && number(e.d) > 0 : number(e.len) > 0,
+  const elements = (getRackLayout(center, floor).racks || []).filter(
+    (e) =>
+      twinTypeVisible(e.type || "rack") &&
+      (isFreeWall(e)
+        ? wallGeom(e).len > 0
+        : elementTypeInfo(e.type).shape === "area"
+          ? number(e.w) > 0 && number(e.d) > 0
+          : number(e.len) > 0),
   );
 
   // 실제 배치가 있으면 그것을, 없으면 도면 zone을 폴백 렌더
@@ -2915,7 +2978,22 @@ function render3DTwin() {
     const maxCapa = Math.max(1, ...rackEls.map((r) => number(r.capa)));
     elements.forEach((e) => {
       const info = elementTypeInfo(e.type);
-      if (info.shape === "area") {
+      if (isFreeWall(e)) {
+        const g = wallGeom(e);
+        items.push({
+          type: "wall",
+          free: true,
+          cx: g.cx,
+          cy: g.cy,
+          len: g.len,
+          deg: g.deg,
+          th: g.th,
+          height: Math.max(1, Math.round(number(e.height) || 1)),
+          color: e.color || info.color,
+          name: e.name || "",
+        });
+        areaLegend.set(info.label, e.color || info.color);
+      } else if (info.shape === "area") {
         items.push({
           type: e.type,
           col: e.col,
@@ -3162,6 +3240,24 @@ function elementTypeInfo(type) {
   return TWIN_ELEMENT_TYPES[type] || TWIN_ELEMENT_TYPES.rack;
 }
 
+// 이름표 기본값: 사용자가 이름을 직접 입력한 경우에만 표시하는 타입
+// (벽/챔버·도크/출입구·통로·기둥·랙은 이름을 넣기 전까지 라벨을 띄우지 않는다)
+const TWIN_LABEL_NAMED_ONLY = new Set(["rack", "dock", "aisle", "column", "wall"]);
+// 3D 보기에서 기본으로 숨기는 타입 (표시 요소 패널에서 켤 수 있음)
+const TWIN_HIDDEN_BY_DEFAULT = new Set(["wall"]);
+
+function twinTypeVisible(type) {
+  const v = state.twinTypeVis?.[type];
+  return v === undefined ? !TWIN_HIDDEN_BY_DEFAULT.has(type) : v !== false;
+}
+// named = 사용자가 이름을 직접 입력했는지. 패널에서 켜고 끄면 그 설정이 우선한다.
+function twinTypeLabelOn(type, named) {
+  if (state.twinLabels === false) return false;
+  const v = state.twinTypeLabels?.[type];
+  if (v !== undefined) return !!v;
+  return named || !TWIN_LABEL_NAMED_ONLY.has(type);
+}
+
 // 공유 지오메트리/머티리얼 (씬 재빌드 시 유지)
 function twinResources() {
   if (twinState.res) return twinState.res;
@@ -3342,6 +3438,71 @@ function buildTwinRackUnit(group, res, spec, boxMat, batch) {
   }
 }
 
+// ── 표시 요소 패널 — 타입별로 3D 표시/이름표를 켜고 끈다 ────────────────────
+function renderTwinLayerPanel() {
+  const rows = $("#twinLayerRows");
+  if (!rows) return;
+  rows.innerHTML = Object.entries(TWIN_ELEMENT_TYPES)
+    .map(([key, v]) => {
+      const vis = twinTypeVisible(key);
+      // 이름표 체크는 '이름 없는 요소에도 라벨을 띄우는가'를 나타낸다
+      const lab = twinTypeLabelOn(key, false);
+      return `<label class="twin-layer-row ${vis ? "" : "off"}">
+        <span class="twin-layer-name"><i class="sw" style="background:${v.color}"></i>${v.label}</span>
+        <input type="checkbox" data-layer-vis="${key}" ${vis ? "checked" : ""} title="3D에 표시" />
+        <input type="checkbox" data-layer-label="${key}" ${lab ? "checked" : ""} ${vis ? "" : "disabled"} title="이름표 표시 (이름을 입력한 요소는 항상 표시)" />
+      </label>`;
+    })
+    .join("");
+  const btn = $("#twinLayerToggle");
+  if (btn) {
+    const hidden = Object.keys(TWIN_ELEMENT_TYPES).filter((k) => !twinTypeVisible(k));
+    btn.textContent = hidden.length ? `🧩 표시 요소 (${hidden.length} 숨김)` : "🧩 표시 요소";
+    btn.classList.toggle("off", !!hidden.length);
+  }
+}
+
+function bindTwinLayerPanel() {
+  const toggle = $("#twinLayerToggle");
+  const panel = $("#twinLayerPanel");
+  if (!toggle || !panel) return;
+  renderTwinLayerPanel();
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    panel.hidden = !panel.hidden;
+    toggle.setAttribute("aria-expanded", String(!panel.hidden));
+    if (!panel.hidden) renderTwinLayerPanel();
+  });
+  panel.addEventListener("click", (e) => e.stopPropagation());
+  document.addEventListener("click", () => {
+    if (!panel.hidden) {
+      panel.hidden = true;
+      toggle.setAttribute("aria-expanded", "false");
+    }
+  });
+  panel.addEventListener("change", (e) => {
+    const vis = e.target.dataset.layerVis;
+    const lab = e.target.dataset.layerLabel;
+    if (vis) {
+      if (!state.twinTypeVis) state.twinTypeVis = {};
+      state.twinTypeVis[vis] = e.target.checked;
+    } else if (lab) {
+      if (!state.twinTypeLabels) state.twinTypeLabels = {};
+      state.twinTypeLabels[lab] = e.target.checked;
+    } else return;
+    saveState();
+    renderTwinLayerPanel();
+    if (twinViewMode === "view") render3DTwin();
+  });
+  $("#twinLayerReset")?.addEventListener("click", () => {
+    state.twinTypeVis = {};
+    state.twinTypeLabels = {};
+    saveState();
+    renderTwinLayerPanel();
+    if (twinViewMode === "view") render3DTwin();
+  });
+}
+
 function buildTwinBlocks(items) {
   if (!twinState) return;
   const group = twinState.blocks;
@@ -3358,6 +3519,10 @@ function buildTwinBlocks(items) {
   const res = twinResources();
   const batch = new Map();
   items.forEach((spec) => {
+    if (spec.free) {
+      buildTwinFreeWall(group, res, spec);
+      return;
+    }
     if (elementTypeInfo(spec.type).shape === "area") {
       buildTwinArea(group, res, spec, batch);
       return;
@@ -3387,10 +3552,10 @@ function buildTwinBlocks(items) {
     };
     group.add(pick);
     twinState.pick.push(pick);
-    // 이름(또는 고객사)을 지정한 랙은 3D에도 이름 표시
+    // 이름을 지정한 랙만 이름 표시 (표시 요소 패널에서 강제로 켜면 고객사명 사용)
     const rackLabel = (spec.name && String(spec.name).trim()) || "";
-    if (state.twinLabels !== false && rackLabel) {
-      const label = makeTwinLabel(rackLabel);
+    if (twinTypeLabelOn("rack", !!rackLabel)) {
+      const label = makeTwinLabel(rackLabel || spec.customer || "랙");
       label.position.set(
         horiz ? spec.col + spec.len / 2 : spec.col + 0.5,
         H + 0.8,
@@ -3401,6 +3566,40 @@ function buildTwinBlocks(items) {
     }
   });
   twinBatchFlush(batch, group);
+}
+
+// 사선(자유선) 벽 — 두 점 사이를 y축 회전한 판으로 세운다
+function buildTwinFreeWall(group, res, spec) {
+  const color = new THREE.Color(spec.color || elementTypeInfo("wall").color);
+  const H = spec.height ? spec.height * TWIN_LEVEL_H : 6.2;
+  const rotY = (-spec.deg * Math.PI) / 180; // 화면 y축(아래로 +)과 3D z축 방향이 반대
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.05, transparent: true, opacity: 0.9 });
+  const geo = new THREE.BoxGeometry(spec.len, H, spec.th);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(spec.cx, H / 2, spec.cy);
+  mesh.rotation.y = rotY;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x2a3340 }));
+  edges.position.copy(mesh.position);
+  edges.rotation.y = rotY;
+  group.add(edges);
+
+  const pick = new THREE.Mesh(new THREE.BoxGeometry(spec.len, Math.max(H, 0.6), Math.max(spec.th, 0.6)), res.pickMat);
+  pick.position.copy(mesh.position);
+  pick.rotation.y = rotY;
+  pick.userData.zone = { _area: true, name: spec.name || "벽/챔버", typeLabel: "벽/챔버" };
+  group.add(pick);
+  twinState.pick.push(pick);
+
+  const named = !!(spec.name && String(spec.name).trim());
+  if (twinTypeLabelOn("wall", named)) {
+    const label = makeTwinLabel(spec.name || "벽/챔버");
+    label.position.set(spec.cx, H + 0.8, spec.cy);
+    group.add(label);
+    twinState.labels.push(label);
+  }
 }
 
 // 사각 영역 요소 (사무실/도크/작업장/통로/기타)
@@ -3425,10 +3624,9 @@ function buildTwinArea(group, res, spec, batch) {
   group.add(pick);
   twinState.pick.push(pick);
 
-  // 이름을 직접 지정했으면 어떤 타입이든 표시 (벽/챔버·기둥 포함)
+  // 벽/챔버·도크·통로·기둥은 이름을 직접 입력했을 때만 표시 (패널 설정이 있으면 그쪽이 우선)
   const named = !!(spec.name && String(spec.name).trim());
-  const showLabel = state.twinLabels !== false && (named || (type !== "aisle" && type !== "column" && type !== "wall"));
-  if (showLabel) {
+  if (twinTypeLabelOn(type, named)) {
     const label = makeTwinLabel(spec.name || elementTypeInfo(type).label);
     label.position.set(cx, H + 0.8, cz);
     group.add(label);
@@ -3865,16 +4063,58 @@ function floorRackCapa(center, floor) {
 }
 
 function isAreaElement(el) {
+  if (isFreeWall(el)) return false; // 자유선 벽은 사각 영역이 아니다
   return elementTypeInfo(el.type).shape === "area";
 }
+
+/* ── 사선(자유선) 벽 ────────────────────────────────────────────────────────
+   벽은 두께 있는 '선'이라 격자 사각형으로는 사선을 못 그린다.
+   두 점(x1,y1)-(x2,y2)를 격자 좌표(소수 허용)로 저장하고 각도는 계산해서 쓴다.
+   기존 사각(col/row/w/d) 벽 데이터도 그대로 렌더된다. */
+const WALL_TH_DEFAULT = 0.5; // 두께(격자칸)
+function isFreeWall(el) {
+  return !!el && el.type === "wall" && el.x1 != null && el.x2 != null;
+}
+function wallGeom(el) {
+  const dx = number(el.x2) - number(el.x1);
+  const dy = number(el.y2) - number(el.y1);
+  return {
+    cx: (number(el.x1) + number(el.x2)) / 2,
+    cy: (number(el.y1) + number(el.y2)) / 2,
+    len: Math.hypot(dx, dy),
+    // 화면 좌표계(y 아래로 증가) 기준 각도. 3D에서는 부호를 뒤집어 쓴다.
+    deg: (Math.atan2(dy, dx) * 180) / Math.PI,
+    th: Math.max(0.1, number(el.th) || WALL_TH_DEFAULT),
+  };
+}
+// 중심·각도·길이로 두 끝점을 다시 계산 (각도/길이를 폼에서 수정할 때)
+function setWallFromPolar(el, cx, cy, len, deg) {
+  const rad = (deg * Math.PI) / 180;
+  const hx = (Math.cos(rad) * len) / 2;
+  const hy = (Math.sin(rad) * len) / 2;
+  el.x1 = Math.round((cx - hx) * 100) / 100;
+  el.y1 = Math.round((cy - hy) * 100) / 100;
+  el.x2 = Math.round((cx + hx) * 100) / 100;
+  el.y2 = Math.round((cy + hy) * 100) / 100;
+}
 function elementColor(el) {
-  if (isAreaElement(el)) return el.color || elementTypeInfo(el.type).color;
+  if (isAreaElement(el) || isFreeWall(el)) return el.color || elementTypeInfo(el.type).color;
   return el.color || customerColor(el.customer);
 }
 function elementLabel(el) {
+  if (isFreeWall(el)) return el.name || "";
   return isAreaElement(el) ? el.name || elementTypeInfo(el.type).label : el.customer || "랙";
 }
 function elementStyle(el) {
+  if (isFreeWall(el)) {
+    // 격자가 정사각(스테이지 aspect-ratio 216/126)이라 %좌표 그대로 회전해도 안 찌그러진다
+    const g = wallGeom(el);
+    return (
+      `left:${(g.cx / FLOORPLAN_COLS) * 100}%;top:${(g.cy / FLOORPLAN_ROWS) * 100}%;` +
+      `width:${(g.len / FLOORPLAN_COLS) * 100}%;height:${(g.th / FLOORPLAN_ROWS) * 100}%;` +
+      `transform:translate(-50%,-50%) rotate(${g.deg}deg);--rc:${elementColor(el)};`
+    );
+  }
   const area = isAreaElement(el);
   const horiz = el.dir !== "v";
   const left = (el.col / FLOORPLAN_COLS) * 100;
@@ -4523,7 +4763,7 @@ function centerRackElements(center) {
   const out = [];
   getCenterFloors(center).forEach((floor) => {
     getRackLayout(center, floor).racks.forEach((el) => {
-      if (!isAreaElement(el)) out.push({ floor, el });
+      if (!isAreaElement(el) && !isFreeWall(el)) out.push({ floor, el });
     });
   });
   return out;
@@ -5025,7 +5265,7 @@ function refreshRackLayer() {
   layer.innerHTML = racks
     .map(
       (r) =>
-        `<div class="rack-item ${isAreaElement(r) ? "area" : ""} ${r.id === selectedRackId ? "selected" : ""}" data-rack-id="${r.id}" style="${elementStyle(r)}"><span>${elementLabel(r)}</span></div>`,
+        `<div class="rack-item ${isAreaElement(r) ? "area" : ""} ${isFreeWall(r) ? "wall-free" : ""} ${r.id === selectedRackId ? "selected" : ""}" data-rack-id="${r.id}" style="${elementStyle(r)}"><span>${elementLabel(r)}</span></div>`,
     )
     .join("");
   // 이벤트 위임 — 요소가 수백 개여도 리스너는 레이어 1개만 (재렌더 비용 절감)
@@ -5057,7 +5297,7 @@ function startElementMove(event, id) {
   event.stopPropagation(); // 그리드의 '새로 그리기' 드래그와 충돌 방지
   selectRack(id);
   const start = cellFromPointer(grid, event);
-  elementMove = { id, start, col0: el.col, row0: el.row, moved: false };
+  elementMove = { id, start, col0: el.col, row0: el.row, moved: false, pts0: isFreeWall(el) ? { x1: el.x1, y1: el.y1, x2: el.x2, y2: el.y2 } : null };
   const dom = $("#rackLayer")?.querySelector(`[data-rack-id="${id}"]`);
   try {
     if (event.pointerId != null && dom) dom.setPointerCapture(event.pointerId);
@@ -5078,11 +5318,20 @@ function startElementMove(event, id) {
       if (!dCol && !dRow && !elementMove.moved) return;
       const target = getRackLayout(twinActiveCenter(), twinActiveFloor()).racks.find((r) => r.id === elementMove.id);
       if (!target) return;
-      const area = isAreaElement(target);
-      const w = area ? target.w : target.dir === "h" ? target.len : 1;
-      const h = area ? target.d : target.dir === "v" ? target.len : 1;
-      target.col = Math.max(0, Math.min(FLOORPLAN_COLS - w, elementMove.col0 + dCol));
-      target.row = Math.max(0, Math.min(FLOORPLAN_ROWS - h, elementMove.row0 + dRow));
+      if (elementMove.pts0) {
+        // 자유선 벽은 두 끝점을 함께 평행이동
+        const p = elementMove.pts0;
+        target.x1 = p.x1 + dCol;
+        target.y1 = p.y1 + dRow;
+        target.x2 = p.x2 + dCol;
+        target.y2 = p.y2 + dRow;
+      } else {
+        const area = isAreaElement(target);
+        const w = area ? target.w : target.dir === "h" ? target.len : 1;
+        const h = area ? target.d : target.dir === "v" ? target.len : 1;
+        target.col = Math.max(0, Math.min(FLOORPLAN_COLS - w, elementMove.col0 + dCol));
+        target.row = Math.max(0, Math.min(FLOORPLAN_ROWS - h, elementMove.row0 + dRow));
+      }
       elementMove.moved = true;
       // 전체 레이어를 다시 그리지 않고 끌고 있는 요소만 갱신
       if (dom) dom.style.cssText = elementStyle(target);
@@ -5109,11 +5358,18 @@ function startElementMove(event, id) {
 function nudgeSelectedElement(dCol, dRow) {
   const el = selectedRack();
   if (!el) return false;
-  const area = isAreaElement(el);
-  const w = area ? el.w : el.dir === "h" ? el.len : 1;
-  const h = area ? el.d : el.dir === "v" ? el.len : 1;
-  el.col = Math.max(0, Math.min(FLOORPLAN_COLS - w, el.col + dCol));
-  el.row = Math.max(0, Math.min(FLOORPLAN_ROWS - h, el.row + dRow));
+  if (isFreeWall(el)) {
+    el.x1 += dCol;
+    el.y1 += dRow;
+    el.x2 += dCol;
+    el.y2 += dRow;
+  } else {
+    const area = isAreaElement(el);
+    const w = area ? el.w : el.dir === "h" ? el.len : 1;
+    const h = area ? el.d : el.dir === "v" ? el.len : 1;
+    el.col = Math.max(0, Math.min(FLOORPLAN_COLS - w, el.col + dCol));
+    el.row = Math.max(0, Math.min(FLOORPLAN_ROWS - h, el.row + dRow));
+  }
   markLayoutEdited(twinActiveCenter(), twinActiveFloor());
   saveState();
   refreshRackLayer();
@@ -5137,12 +5393,14 @@ function refreshRackList() {
   }
   list.innerHTML = racks
     .map((r) => {
-      const meta = isAreaElement(r)
-        ? `${elementTypeInfo(r.type).label} ${r.w}×${r.d}`
-        : `${r.dir === "v" ? "세로" : "가로"} ${r.len}칸·${r.levels || TWIN_LEVELS}단 · ${rackSlots(r)} PLT`;
+      const meta = isFreeWall(r)
+        ? `벽(사선) ${Math.round(wallGeom(r).len * 10) / 10}칸 · ${Math.round(wallGeom(r).deg)}°`
+        : isAreaElement(r)
+          ? `${elementTypeInfo(r.type).label} ${r.w}×${r.d}`
+          : `${r.dir === "v" ? "세로" : "가로"} ${r.len}칸·${r.levels || TWIN_LEVELS}단 · ${rackSlots(r)} PLT`;
       return `<div class="rack-list-item ${r.id === selectedRackId ? "selected" : ""}" data-rack-id="${r.id}">
           <span class="sw" style="background:${elementColor(r)}"></span>
-          <span>${elementLabel(r)}${!isAreaElement(r) && r.name ? " · " + r.name : ""}</span>
+          <span>${isFreeWall(r) ? r.name || "벽/챔버" : elementLabel(r)}${!isAreaElement(r) && !isFreeWall(r) && r.name ? " · " + r.name : ""}</span>
           <small>${meta}</small>
         </div>`;
     })
@@ -5173,12 +5431,22 @@ function renderRackForm() {
   if (!form) return;
   form.hidden = !el;
   if (!el) return;
+  const freeWall = isFreeWall(el);
   const area = isAreaElement(el);
-  $("#rackFormTitle").textContent = elementTypeInfo(el.type).label + " 속성";
-  $("#rackOnlyFields").hidden = area;
+  $("#rackFormTitle").textContent = elementTypeInfo(el.type).label + " 속성" + (freeWall ? " (사선)" : "");
+  $("#rackOnlyFields").hidden = area || freeWall;
   $("#areaOnlyFields").hidden = !area;
+  $("#wallOnlyFields").hidden = !freeWall;
   $("#rackName").value = el.name || "";
-  if (area) {
+  if (freeWall) {
+    const g = wallGeom(el);
+    $("#wallDeg").value = Math.round(g.deg * 10) / 10;
+    $("#wallLen").value = Math.round(g.len * 10) / 10;
+    $("#wallTh").value = g.th;
+    $("#wallHeight").value = el.height || 1;
+    $("#wallColor").value = el.color || elementTypeInfo("wall").color;
+    $("#wallPts").textContent = `(${el.x1}, ${el.y1}) → (${el.x2}, ${el.y2})`;
+  } else if (area) {
     $("#areaW").value = el.w;
     $("#areaD").value = el.d;
     $("#areaHeight").value = el.height || 1;
@@ -5237,6 +5505,26 @@ function cellFromPointer(gridEl, event) {
   };
 }
 
+// 자유선 벽용 — 격자에 스냅하지 않은 소수 좌표 (Shift를 누르면 15도 단위로 스냅)
+function pointFromPointer(gridEl, event) {
+  const rect = gridEl.getBoundingClientRect();
+  const round = (v) => Math.round(v * 100) / 100;
+  return {
+    x: round(Math.max(0, Math.min(FLOORPLAN_COLS, ((event.clientX - rect.left) / rect.width) * FLOORPLAN_COLS))),
+    y: round(Math.max(0, Math.min(FLOORPLAN_ROWS, ((event.clientY - rect.top) / rect.height) * FLOORPLAN_ROWS))),
+  };
+}
+function snapWallEnd(start, cur, shift) {
+  if (!shift) return cur;
+  const dx = cur.x - start.x;
+  const dy = cur.y - start.y;
+  const len = Math.hypot(dx, dy);
+  const step = 15;
+  const deg = Math.round((Math.atan2(dy, dx) * 180) / Math.PI / step) * step;
+  const rad = (deg * Math.PI) / 180;
+  return { x: Math.round((start.x + Math.cos(rad) * len) * 100) / 100, y: Math.round((start.y + Math.sin(rad) * len) * 100) / 100 };
+}
+
 function rackDragRect(start, cur) {
   const dcol = cur.col - start.col;
   const drow = cur.row - start.row;
@@ -5261,7 +5549,8 @@ function startRackDraw(event) {
   if (!grid) return;
   event.preventDefault();
   const start = cellFromPointer(grid, event);
-  rackDrag = { start, cur: start };
+  const startPt = pointFromPointer(grid, event);
+  rackDrag = { start, cur: start, startPt, curPt: startPt, shift: !!event.shiftKey };
   try {
     if (event.pointerId != null) grid.setPointerCapture(event.pointerId);
   } catch {
@@ -5274,6 +5563,8 @@ function moveRackDraw(event) {
   if (!rackDrag) return;
   const grid = $("#rackGrid");
   rackDrag.cur = cellFromPointer(grid, event);
+  rackDrag.curPt = pointFromPointer(grid, event);
+  rackDrag.shift = !!event.shiftKey;
   updateRackPreview();
 }
 
@@ -5285,10 +5576,15 @@ function updateRackPreview() {
     return;
   }
   const info = elementTypeInfo(twinElementType);
-  const rect =
-    info.shape === "area"
-      ? { type: twinElementType, ...areaDragRect(rackDrag.start, rackDrag.cur), color: info.color }
-      : { type: "rack", ...rackDragRect(rackDrag.start, rackDrag.cur), color: info.color };
+  let rect;
+  if (twinElementType === "wall") {
+    const end = snapWallEnd(rackDrag.startPt, rackDrag.curPt, rackDrag.shift);
+    rect = { type: "wall", x1: rackDrag.startPt.x, y1: rackDrag.startPt.y, x2: end.x, y2: end.y, color: info.color };
+  } else if (info.shape === "area") {
+    rect = { type: twinElementType, ...areaDragRect(rackDrag.start, rackDrag.cur), color: info.color };
+  } else {
+    rect = { type: "rack", ...rackDragRect(rackDrag.start, rackDrag.cur), color: info.color };
+  }
   preview.hidden = false;
   preview.style.cssText = elementStyle(rect);
 }
@@ -5300,7 +5596,17 @@ function endRackDraw(event) {
   const info = elementTypeInfo(twinElementType);
   const id = "el-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   let el;
-  if (info.shape === "area") {
+  if (twinElementType === "wall") {
+    // 벽은 두 점 자유선 — 각도 제한 없이 사선으로 그린다 (Shift = 15도 스냅)
+    const end = snapWallEnd(rackDrag.startPt, pointFromPointer(grid, event), !!event.shiftKey);
+    const p = rackDrag.startPt;
+    if (Math.hypot(end.x - p.x, end.y - p.y) < 0.6) {
+      rackDrag = null; // 클릭만 한 경우 생성하지 않음
+      $("#rackPreview").hidden = true;
+      return;
+    }
+    el = { id, type: "wall", x1: p.x, y1: p.y, x2: end.x, y2: end.y, th: WALL_TH_DEFAULT, height: 1, name: "", color: info.color };
+  } else if (info.shape === "area") {
     const a = areaDragRect(rackDrag.start, cur);
     el = {
       id,
@@ -5516,6 +5822,29 @@ function bindRackEditor() {
     updateSelectedRack({ height: Math.max(1, Math.min(6, Number(e.target.value) || 1)) }),
   );
   $("#areaColor")?.addEventListener("input", (e) => updateSelectedRack({ color: e.target.value }));
+  // 사선 벽 — 각도·길이는 중심을 고정한 채 두 끝점을 다시 계산한다
+  const reshapeWall = (patch) => {
+    const el = selectedRack();
+    if (!isFreeWall(el)) return;
+    const g = wallGeom(el);
+    setWallFromPolar(el, g.cx, g.cy, patch.len ?? g.len, patch.deg ?? g.deg);
+    updateSelectedRack({});
+    renderRackForm(); // 각도·길이·좌표 표시를 계산 결과로 되돌려 보여준다
+  };
+  $("#wallDeg")?.addEventListener("change", (e) => reshapeWall({ deg: Number(e.target.value) || 0 }));
+  $("#wallLen")?.addEventListener("change", (e) => reshapeWall({ len: Math.max(0.5, Number(e.target.value) || 1) }));
+  $("#wallSnap45")?.addEventListener("click", () => {
+    const el = selectedRack();
+    if (!isFreeWall(el)) return;
+    reshapeWall({ deg: Math.round(wallGeom(el).deg / 15) * 15 });
+  });
+  $("#wallTh")?.addEventListener("change", (e) =>
+    updateSelectedRack({ th: Math.max(0.1, Math.min(5, Number(e.target.value) || WALL_TH_DEFAULT)) }),
+  );
+  $("#wallHeight")?.addEventListener("change", (e) =>
+    updateSelectedRack({ height: Math.max(1, Math.min(6, Number(e.target.value) || 1)) }),
+  );
+  $("#wallColor")?.addEventListener("input", (e) => updateSelectedRack({ color: e.target.value }));
   $("#rackDelete")?.addEventListener("click", deleteSelectedRack);
   $("#rackClearAll")?.addEventListener("click", clearAllRacks);
   $("#layoutUndoBackup")?.addEventListener("click", restoreLayoutBackup);
@@ -5523,6 +5852,7 @@ function bindRackEditor() {
   $("#layoutExport")?.addEventListener("click", exportLayouts);
   $("#layoutImport")?.addEventListener("change", importLayouts);
   $("#rackFloorplanUpload")?.addEventListener("change", uploadRackFloorplan);
+  bindTwinLayerPanel();
   // 3D 이름 표시 토글
   const syncLabelToggle = () => {
     const btn = $("#twinLabelToggle");
