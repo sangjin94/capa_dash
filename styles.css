@@ -2512,7 +2512,8 @@ label textarea {
 .bg-adjust-label { font-size: 12px; color: #9fb2cc; font-weight: 600; }
 .bg-adjust input[type=range] { width: 96px; }
 .bg-scale-val { font-size: 12px; color: #cdd8e8; min-width: 38px; text-align: right; }
-.bg-nudge { display: inline-flex; gap: 2px; }
+.bg-nudge { display: inline-flex; gap: 2px; align-items: center; }
+.bg-axis { font-size: 11px; color: #8ea1bd; margin-right: 2px; }
 .ghost.mini { padding: 2px 7px; font-size: 12px; line-height: 1.4; border-radius: 6px; min-width: 0; }
 
 .rack-stage { position: relative; border-radius: 14px; overflow: hidden; background: #0b111c;

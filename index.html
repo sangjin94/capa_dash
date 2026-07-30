@@ -313,8 +313,18 @@
                     <button type="button" id="bgZoomOut" class="ghost mini">−</button>
                     <input id="bgScale" type="range" min="20" max="400" step="2" value="100" />
                     <button type="button" id="bgZoomIn" class="ghost mini">＋</button>
-                    <span class="bg-scale-val" id="bgScaleVal">100%</span>
-                    <span class="bg-nudge">
+                    <span class="bg-scale-val" id="bgScaleVal">가로 100% · 세로 100%</span>
+                    <span class="bg-nudge" title="가로 배율(좌우 늘이기)">
+                      <span class="bg-axis">가로</span>
+                      <button type="button" class="ghost mini" id="bgWminus">−</button>
+                      <button type="button" class="ghost mini" id="bgWplus">＋</button>
+                    </span>
+                    <span class="bg-nudge" title="세로 배율(상하 늘이기)">
+                      <span class="bg-axis">세로</span>
+                      <button type="button" class="ghost mini" id="bgHminus">−</button>
+                      <button type="button" class="ghost mini" id="bgHplus">＋</button>
+                    </span>
+                    <span class="bg-nudge" title="위치 이동(정밀)">
                       <button type="button" class="ghost mini" data-bg-nudge="left">◀</button>
                       <button type="button" class="ghost mini" data-bg-nudge="up">▲</button>
                       <button type="button" class="ghost mini" data-bg-nudge="down">▼</button>
@@ -322,7 +332,7 @@
                     </span>
                     <button type="button" id="bgReset" class="ghost mini">초기화</button>
                   </div>
-                  <span class="rack-editor-hint">도면 위에서 <b>드래그</b>해 요소를 그립니다. 도면 크기·위치가 랙과 안 맞으면 위 <b>도면 맞춤</b>으로 조정하세요. (파일 업로드는 아래 <b>센터 사진</b> 옆)</span>
+                  <span class="rack-editor-hint">도면 위에서 <b>드래그</b>해 요소를 그립니다. 도면이 랙과 안 맞으면 <b>도면 맞춤</b>의 전체 배율·<b>가로/세로</b> 배율·이동으로 정확히 겹치게 조정하세요. (파일 업로드는 아래 <b>센터 사진</b> 옆)</span>
                 </div>
                 <div class="rack-type-picker" id="rackTypePicker"></div>
                 <div class="rack-stage" id="rackStage">

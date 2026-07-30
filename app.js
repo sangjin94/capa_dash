@@ -145,7 +145,7 @@ function materializeDefaultRack(e) {
   }
   return {
     id, type: e.type, col: e.col, row: e.row, w: e.w || 1, d: e.d || 1,
-    name: e.name || "", color: e.color || (e.type === "column" ? "#9aa3b2" : "#64748b"), height: e.height || 1,
+    name: e.name || "", color: e.color || (e.type === "column" ? "#9aa3b2" : e.type === "wall" ? "#ef4444" : "#64748b"), height: e.height || 1,
   };
 }
 const CENTER_MAP_POSITIONS = {
@@ -3028,7 +3028,7 @@ const TWIN_ELEMENT_TYPES = {
   work: { label: "임가공/작업장", color: "#10b981", shape: "area" },
   aisle: { label: "통로", color: "#64748b", shape: "area" },
   column: { label: "기둥", color: "#9aa3b2", shape: "area" },
-  wall: { label: "벽/챔버", color: "#60a5fa", shape: "area" },
+  wall: { label: "벽/챔버", color: "#ef4444", shape: "area" },
   etc: { label: "기타", color: "#94a3b8", shape: "area" },
 };
 function elementTypeInfo(type) {
@@ -3410,7 +3410,7 @@ function buildTwinColumn(group, spec, color) {
 function buildTwinWall(group, spec, color) {
   const w = spec.w || 1;
   const d = spec.d || 1;
-  const H = spec.height ? spec.height * TWIN_LEVEL_H : 4.2;
+  const H = spec.height ? spec.height * TWIN_LEVEL_H : 5.0; // 랙(4.2)보다 높고 기둥(5.6)보다 낮게
   const th = 0.35;
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.05, transparent: true, opacity: 0.9 });
   const edgeMat = new THREE.LineBasicMaterial({ color: 0x2a3340 });
@@ -3559,30 +3559,45 @@ function renderRackTypePicker() {
   );
 }
 
-// 배경 도면 변형(확대/축소·이동) — 사용자가 그린 랙에 도면을 맞추기 위함
+// 배경 도면 변형(가로/세로 배율·이동) — 사용자가 그린 랙에 도면을 정확히 맞추기 위함
 function rackBgView(plan) {
-  if (!plan.bgView) plan.bgView = { scale: 100, x: 0, y: 0 };
-  return plan.bgView;
+  if (!plan.bgView) plan.bgView = { sx: 100, sy: 100, x: 0, y: 0 };
+  const v = plan.bgView;
+  if (v.sx == null) {
+    // 구버전(단일 scale) 마이그레이션
+    v.sx = v.scale || 100;
+    v.sy = v.scale || 100;
+    delete v.scale;
+  }
+  return v;
 }
 function applyRackBgTransform() {
   const img = $("#rackFloorImage");
   if (!img) return;
   const v = rackBgView(getFloorplan(twinActiveCenter(), twinActiveFloor()));
   img.style.transformOrigin = "center center";
-  img.style.transform = `translate(${v.x}%, ${v.y}%) scale(${v.scale / 100})`;
+  img.style.transform = `translate(${v.x}%, ${v.y}%) scale(${v.sx / 100}, ${v.sy / 100})`;
   const slider = $("#bgScale");
-  if (slider && document.activeElement !== slider) slider.value = v.scale;
+  if (slider && document.activeElement !== slider) slider.value = Math.round((v.sx + v.sy) / 2);
   const val = $("#bgScaleVal");
-  if (val) val.textContent = `${Math.round(v.scale)}%`;
+  if (val) val.textContent = `가로 ${Math.round(v.sx)}% · 세로 ${Math.round(v.sy)}%`;
 }
 function updateRackBgView(patch) {
   const plan = getFloorplan(twinActiveCenter(), twinActiveFloor());
   const v = rackBgView(plan);
-  if (patch.scale != null) v.scale = Math.max(20, Math.min(400, patch.scale));
-  if (patch.dx) v.x = Math.max(-100, Math.min(100, v.x + patch.dx));
-  if (patch.dy) v.y = Math.max(-100, Math.min(100, v.y + patch.dy));
+  const clampS = (s) => Math.max(20, Math.min(400, s));
+  const clampP = (p) => Math.max(-100, Math.min(100, p));
+  if (patch.scale != null) {
+    v.sx = clampS(patch.scale);
+    v.sy = clampS(patch.scale);
+  }
+  if (patch.dsx) v.sx = clampS(v.sx + patch.dsx);
+  if (patch.dsy) v.sy = clampS(v.sy + patch.dsy);
+  if (patch.dx) v.x = clampP(v.x + patch.dx);
+  if (patch.dy) v.y = clampP(v.y + patch.dy);
   if (patch.reset) {
-    v.scale = 100;
+    v.sx = 100;
+    v.sy = 100;
     v.x = 0;
     v.y = 0;
   }
@@ -3952,18 +3967,19 @@ function bindRackEditor() {
   });
   $("#inventoryUpload")?.addEventListener("change", uploadInventory);
   $("#twinPhotoUpload")?.addEventListener("change", uploadCenterPhoto);
-  // 배경 도면 맞춤(확대/축소·이동)
+  // 배경 도면 맞춤(전체/가로/세로 배율·이동)
+  const curBg = () => rackBgView(getFloorplan(twinActiveCenter(), twinActiveFloor()));
   $("#bgScale")?.addEventListener("input", (e) => updateRackBgView({ scale: Number(e.target.value) }));
-  $("#bgZoomIn")?.addEventListener("click", () =>
-    updateRackBgView({ scale: rackBgView(getFloorplan(twinActiveCenter(), twinActiveFloor())).scale + 5 }),
-  );
-  $("#bgZoomOut")?.addEventListener("click", () =>
-    updateRackBgView({ scale: rackBgView(getFloorplan(twinActiveCenter(), twinActiveFloor())).scale - 5 }),
-  );
+  $("#bgZoomIn")?.addEventListener("click", () => updateRackBgView({ scale: (curBg().sx + curBg().sy) / 2 + 3 }));
+  $("#bgZoomOut")?.addEventListener("click", () => updateRackBgView({ scale: (curBg().sx + curBg().sy) / 2 - 3 }));
+  $("#bgWplus")?.addEventListener("click", () => updateRackBgView({ dsx: 1 }));
+  $("#bgWminus")?.addEventListener("click", () => updateRackBgView({ dsx: -1 }));
+  $("#bgHplus")?.addEventListener("click", () => updateRackBgView({ dsy: 1 }));
+  $("#bgHminus")?.addEventListener("click", () => updateRackBgView({ dsy: -1 }));
   $("#bgReset")?.addEventListener("click", () => updateRackBgView({ reset: true }));
   document.querySelectorAll("[data-bg-nudge]").forEach((btn) =>
     btn.addEventListener("click", () => {
-      const step = 2;
+      const step = 0.5; // 정밀 이동
       const dir = btn.dataset.bgNudge;
       updateRackBgView({
         dx: dir === "left" ? -step : dir === "right" ? step : 0,
