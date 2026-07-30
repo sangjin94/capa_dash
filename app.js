@@ -307,6 +307,8 @@ function loadState() {
       rackLayoutsBackup: parsed.rackLayoutsBackup || {},
       centerWmsCodes: parsed.centerWmsCodes || {},
       lastMarketCode: parsed.lastMarketCode || "",
+      layoutToolsOpen: !!parsed.layoutToolsOpen,
+      gaonUserId: parsed.gaonUserId || "",
     };
   } catch {
     return structuredClone(defaultState);
@@ -3987,6 +3989,32 @@ const CENTER_WMS_CODE = { 남이천1센터: "0000200" };
 function centerWmsCode(center) {
   return (state.centerWmsCodes && state.centerWmsCodes[center]) || CENTER_WMS_CODE[center] || "";
 }
+// gaon 로그인 — 사번/비밀번호는 중계 서버 메모리에만 유지되고 저장되지 않는다
+async function gaonLogin() {
+  const id = (window.prompt("gaon 사번(사용자 ID)", state.gaonUserId || "") || "").trim();
+  if (!id) return false;
+  const pw = window.prompt(`gaon 비밀번호 (${id})\n※ 저장되지 않고 서버 메모리에만 유지됩니다`);
+  if (!pw) return false;
+  const status = $("#inventoryStatus");
+  if (status) status.textContent = "gaon 로그인 중…";
+  try {
+    const res = await fetch("/api/gaon/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, pw }),
+    });
+    const data = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+    if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    state.gaonUserId = id; // 사번만 기억 (비밀번호는 저장하지 않음)
+    saveState();
+    return true;
+  } catch (err) {
+    if (status) status.textContent = "gaon 로그인 실패: " + err.message;
+    alert("gaon 로그인 실패\n" + err.message);
+    return false;
+  }
+}
+
 async function fetchGaonInventory() {
   const center = twinActiveCenter();
   const status = $("#inventoryStatus");
@@ -4004,8 +4032,15 @@ async function fetchGaonInventory() {
   if (status) status.textContent = "gaon 재고 조회 중…";
   try {
     const url = `/api/gaon/inventory?warehouse=${encodeURIComponent(wh)}&market=${encodeURIComponent(market)}&date=${ymd}`;
-    const res = await fetch(url);
-    const data = await res.json().catch(() => ({ ok: false, error: `응답 오류 (HTTP ${res.status})` }));
+    let res = await fetch(url);
+    let data = await res.json().catch(() => ({ ok: false, error: `응답 오류 (HTTP ${res.status})` }));
+    // 로그인이 필요하면 gaon 계정으로 로그인 후 재시도 (비밀번호는 서버 메모리에만 유지)
+    if (!data.ok && data.needLogin) {
+      if (!(await gaonLogin())) return;
+      if (status) status.textContent = "gaon 재고 조회 중…";
+      res = await fetch(url);
+      data = await res.json().catch(() => ({ ok: false, error: `응답 오류 (HTTP ${res.status})` }));
+    }
     if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
     state.inventory[center] = data.inventory;
     saveState();
@@ -4475,6 +4510,23 @@ function bindRackEditor() {
     applyBgFold();
   });
   applyBgFold();
+  // 배치 관리(백업·되돌리기) 접기/펼치기 — 기본 접힘
+  const applyLayoutFold = () => {
+    const body = $("#layoutToolsBody");
+    const btn = $("#layoutToolsToggle");
+    if (!body || !btn) return;
+    const open = !!state.layoutToolsOpen;
+    body.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    btn.textContent = open ? "배치 관리 ▴" : "배치 관리 ▾";
+    btn.classList.toggle("open", open);
+  };
+  $("#layoutToolsToggle")?.addEventListener("click", () => {
+    state.layoutToolsOpen = !state.layoutToolsOpen;
+    saveState();
+    applyLayoutFold();
+  });
+  applyLayoutFold();
   $("#bgToggle")?.addEventListener("click", () => {
     const v = rackBgView(getFloorplan(twinActiveCenter(), twinActiveFloor()));
     v.off = !v.off;

@@ -2656,3 +2656,5 @@ label textarea {
 .twin-photo-sub { color: #6b7688; font-weight: 400; font-size: 11px; }
 .gaon-btn { cursor: pointer; border: 1px solid rgba(120,200,140,.35); background: #16281d; color: #a7e8bd; }
 .gaon-btn:hover { background: #1d3527; }
+.layout-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; }
+.layout-tools[hidden] { display: none; }

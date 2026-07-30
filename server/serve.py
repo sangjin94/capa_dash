@@ -25,6 +25,20 @@ import gaon_client as gaon  # noqa: E402
 
 PORT = int(os.environ.get("PORT", "5180"))
 
+# 로그인 세션은 이 프로세스 메모리에만 둔다 (비밀번호는 저장하지 않는다)
+SESSION = gaon.Session()
+
+
+def _ensure_session():
+    """환경변수에 자격증명이 있으면 자동 로그인(없으면 앱에서 로그인)."""
+    if SESSION.alive:
+        return True
+    uid, pw = os.environ.get("GAON_ID"), os.environ.get("GAON_PW")
+    if uid and pw:
+        SESSION.login(os.environ.get("GAON_COMPANY", "100"), uid, pw)
+        return True
+    return False
+
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
@@ -48,11 +62,17 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(
                 {
                     "ok": True,
-                    "hasCredentials": bool(os.environ.get("GAON_ID") and os.environ.get("GAON_PW")),
+                    "loggedIn": SESSION.alive,
+                    "userId": SESSION.user_id if SESSION.alive else "",
+                    "hasEnvCredentials": bool(os.environ.get("GAON_ID") and os.environ.get("GAON_PW")),
                     "base": gaon.BASE,
                     "service": "Wms.Inventory.P000000430_stock02_S",
                 }
             )
+        if u.path == "/api/gaon/logout":
+            SESSION.opener = None
+            SESSION.user_id = ""
+            return self._json({"ok": True})
         if u.path == "/api/gaon/inventory":
             q = parse_qs(u.query)
             wh = (q.get("warehouse") or [""])[0].strip()
@@ -63,7 +83,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not wh:
                 return self._json({"ok": False, "error": "warehouse(센터코드)가 필요합니다."}, 400)
             try:
-                res = gaon.fetch_inventory(wh, mk, d_fr, d_to)
+                if not _ensure_session():
+                    return self._json({"ok": False, "needLogin": True, "error": "gaon 로그인이 필요합니다."}, 401)
+                res = SESSION.inventory(wh, mk, d_fr, d_to)
                 return self._json(
                     {
                         "ok": True,
@@ -79,8 +101,27 @@ class Handler(SimpleHTTPRequestHandler):
                 )
             except Exception as e:
                 traceback.print_exc()
-                return self._json({"ok": False, "error": str(e)}, 502)
+                need = "로그인" in str(e)
+                return self._json({"ok": False, "needLogin": need, "error": str(e)}, 401 if need else 502)
         return super().do_GET()
+
+    def do_POST(self):
+        u = urlparse(self.path)
+        if u.path == "/api/gaon/login":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}")
+                uid = str(body.get("id") or "").strip()
+                pw = str(body.get("pw") or "")
+                company = str(body.get("company") or os.environ.get("GAON_COMPANY", "100")).strip()
+                if not uid or not pw:
+                    return self._json({"ok": False, "error": "사번과 비밀번호가 필요합니다."}, 400)
+                SESSION.login(company, uid, pw)
+                # 비밀번호는 어디에도 저장하지 않는다 (세션 쿠키만 메모리에 유지)
+                return self._json({"ok": True, "userId": uid})
+            except Exception as e:
+                return self._json({"ok": False, "error": str(e)}, 401)
+        self.send_error(404)
 
 
 if __name__ == "__main__":

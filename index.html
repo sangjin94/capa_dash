@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=22" />
+    <link rel="stylesheet" href="./styles.css?v=23" />
   </head>
   <body>
     <div class="app-shell">
@@ -340,6 +340,15 @@
                       <button type="button" id="bgAuto" class="mini bg-auto">자동 맞춤</button>
                       <button type="button" id="bgReset" class="ghost mini">초기화</button>
                     </div>
+                    <button type="button" id="layoutToolsToggle" class="ghost mini bg-fold" aria-expanded="false" title="배치 백업·되돌리기 도구 펼치기/접기">배치 관리 ▾</button>
+                    <div class="layout-tools" id="layoutToolsBody" hidden>
+                      <button class="ghost mini" id="layoutUndoBackup" type="button" title="이 층 배치를 마지막 백업 상태로 되돌립니다">↩ 되돌리기</button>
+                      <button class="ghost mini" id="layoutReloadDefault" type="button" title="내장 기본 배치로 교체합니다(현재 배치는 백업)">기본 배치 불러오기</button>
+                      <button class="ghost mini" id="layoutExport" type="button" title="배치·도면을 파일로 저장(기기 이동·초기화 대비)">💾 백업 저장</button>
+                      <label class="ghost mini file-inline" title="백업 파일에서 배치를 복원합니다">📂 백업 불러오기
+                        <input id="layoutImport" type="file" accept=".json" />
+                      </label>
+                    </div>
                   </div>
                   <span class="rack-editor-hint">빈 곳에서 <b>드래그</b>하면 새 요소를 그리고, <b>이미 있는 요소를 드래그</b>하면 이동합니다(선택 후 <b>화살표 키</b>로 1칸 미세 이동). 파일 업로드는 아래 <b>센터 사진</b> 옆.</span>
                 </div>
@@ -356,14 +365,6 @@
                 <div class="rack-side-head">
                   <strong>배치된 랙</strong>
                   <button class="ghost" id="rackClearAll" type="button">전체 삭제</button>
-                </div>
-                <div class="layout-tools">
-                  <button class="ghost mini" id="layoutUndoBackup" type="button" title="이 층 배치를 마지막 백업 상태로 되돌립니다">↩ 되돌리기</button>
-                  <button class="ghost mini" id="layoutReloadDefault" type="button" title="내장 기본 배치로 교체합니다(현재 배치는 백업)">기본 배치 불러오기</button>
-                  <button class="ghost mini" id="layoutExport" type="button" title="배치·도면을 파일로 저장(기기 이동·초기화 대비)">💾 백업 저장</button>
-                  <label class="ghost mini file-inline" title="백업 파일에서 배치를 복원합니다">📂 백업 불러오기
-                    <input id="layoutImport" type="file" accept=".json" />
-                  </label>
                 </div>
                 <div class="rack-capa-summary" id="rackCapaSummary" title="랙 1칸(베이) × 1단 = 1 PLT"></div>
                 <div class="rack-list" id="rackList"></div>
@@ -548,6 +549,6 @@
     <script src="./assets/vendor/OrbitControls.js"></script>
     <script src="./assets/vendor/xlsx.full.min.js"></script>
     <script src="./assets/vendor/pdf.min.js"></script>
-    <script src="./app.js?v=22"></script>
+    <script src="./app.js?v=23"></script>
   </body>
 </html>

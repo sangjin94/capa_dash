@@ -246,6 +246,50 @@ def to_cell_inventory(rows):
     return {"cells": cells, "prefixes": prefixes, "byCustomer": by_customer}
 
 
+class Session:
+    """로그인된 gaon 세션 — 서버 메모리에만 보관(디스크·브라우저 저장 안 함)."""
+
+    def __init__(self):
+        self.opener = None
+        self.jar = None
+        self.user_id = ""
+
+    @property
+    def alive(self):
+        return self.opener is not None
+
+    def login(self, company, user_id, user_pw):
+        opener, jar = _opener()
+        st, body = _post(opener, LOGIN_URL, login_body(company, user_id, user_pw))
+        code, msg = parse_ssv_error(body)
+        if code not in (None, "0"):
+            # gaon이 코드만 반환하는 경우(M0011 등)가 있어 안내를 덧붙인다
+            if not msg or re.fullmatch(r"[A-Z]\d{3,6}", msg):
+                msg = f"사번 또는 비밀번호를 확인하세요 (gaon 응답: {msg or code})"
+            raise RuntimeError(msg)
+        self.opener, self.jar, self.user_id = opener, jar, user_id
+        return {"status": st, "cookies": [c.name for c in jar]}
+
+    def inventory(self, warehouse, market, date_fr, date_to):
+        if not self.alive:
+            raise RuntimeError("로그인이 필요합니다.")
+        st, inv = _post(self.opener, SERVICE_URL, inventory_body(warehouse, market, date_fr, date_to))
+        code, msg = parse_ssv_error(inv)
+        if code not in (None, "0"):
+            # 세션 만료 시 다시 로그인하도록 알림
+            if code == "-2":
+                self.opener = None
+            raise RuntimeError(msg or f"재고조회 실패 (code={code})")
+        cols, rows = parse_inventory(inv)
+        return {
+            "status": st,
+            "columns": cols,
+            "rowCount": len(rows),
+            "inventory": to_app_inventory(rows, f"gaon {warehouse}/{market or '전체'} {date_to}"),
+            "summary": to_cell_inventory(rows),
+        }
+
+
 def fetch_inventory(warehouse, market, date_fr, date_to, company=None, user_id=None, user_pw=None):
     """로그인 → 재고조회 → 파싱. 자격증명은 인자 또는 환경변수."""
     company = company or os.environ.get("GAON_COMPANY", "100")
