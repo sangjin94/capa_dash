@@ -2515,6 +2515,16 @@ label textarea {
 .bg-nudge { display: inline-flex; gap: 2px; align-items: center; }
 .bg-axis { font-size: 11px; color: #8ea1bd; margin-right: 2px; }
 .build-tag { display: block; margin-top: 6px; font-size: 10px; color: #6b7688; letter-spacing: .2px; }
+.bg-toggle { padding: 3px 10px; font-size: 12px; border-radius: 6px; border: 1px solid rgba(120,160,210,.28);
+  background: #1c2a3e; color: #cdd8e8; font-weight: 600; cursor: pointer; }
+.bg-toggle:hover { background: #24354c; }
+.bg-toggle.off { background: #3a2430; color: #f0a8b8; border-color: rgba(240,120,150,.35); }
+/* 센터 사진 + PDF 도면 나란히(절반씩) */
+.twin-dual { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.twin-dual .dual-pane { margin: 0; min-width: 0; }
+.twin-dual figcaption { font-size: 11px; color: #8ea1bd; margin-bottom: 6px; font-weight: 600; }
+.twin-dual .dual-sub { color: #6b7688; font-weight: 400; }
+@media (max-width: 900px) { .twin-dual { grid-template-columns: 1fr; } }
 .bg-auto { padding: 3px 10px; font-size: 12px; border-radius: 6px; border: none; cursor: pointer;
   background: #2563eb; color: #fff; font-weight: 600; }
 .bg-auto:hover { background: #1d4ed8; }

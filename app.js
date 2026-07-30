@@ -2747,12 +2747,25 @@ function getCenterPhoto(center) {
 }
 function renderTwinPhoto() {
   const img = $("#twinPhotoImg");
-  if (!img) return;
-  const src = getCenterPhoto(twinActiveCenter());
-  img.src = src;
-  img.style.display = src ? "block" : "none";
-  const empty = $("#twinPhotoEmpty");
-  if (empty) empty.style.display = src ? "none" : "block";
+  if (img) {
+    const src = getCenterPhoto(twinActiveCenter());
+    img.src = src;
+    img.style.display = src ? "block" : "none";
+    const empty = $("#twinPhotoEmpty");
+    if (empty) empty.style.display = src ? "none" : "block";
+  }
+  // 나란히 보기: 현재 층 PDF 도면
+  const plan = $("#twinPlanImg");
+  if (plan) {
+    const floor = twinActiveFloor();
+    const src = getFloorplan(twinActiveCenter(), floor).image || "";
+    plan.src = src;
+    plan.style.display = src ? "block" : "none";
+    const empty = $("#twinPlanEmpty");
+    if (empty) empty.style.display = src ? "none" : "block";
+    const tag = $("#twinPlanFloor");
+    if (tag) tag.textContent = floor ? `· ${floor}` : "";
+  }
 }
 function uploadCenterPhoto(event) {
   const file = event.target.files?.[0];
@@ -3069,6 +3082,15 @@ function twinResources() {
     postGeoByLevels: new Map(),
     boxMatByColor: new Map(),
     pickMat: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    // 반복 요소 공유 자원 (인스턴싱 대상)
+    doorMat: new THREE.MeshStandardMaterial({ color: 0xb8c2cf, roughness: 0.5, metalness: 0.4 }),
+    dockDoorGeoH: new THREE.BoxGeometry(1.2, 2.0, 0.16),
+    dockDoorGeoV: new THREE.BoxGeometry(0.16, 2.0, 1.2),
+    tableMat: new THREE.MeshStandardMaterial({ color: 0x9aa7b6, roughness: 0.6, metalness: 0.2 }),
+    tableGeo: new THREE.BoxGeometry(1.2, 0.5, 0.7),
+    colMatByColor: new Map(),
+    colCapMat: new THREE.MeshStandardMaterial({ color: 0x5b6472, roughness: 0.85 }),
+    colGeoByKey: new Map(),
   };
   twinState.res = res;
   return res;
@@ -3142,52 +3164,70 @@ function twinZoneRuns(zone) {
   return runs;
 }
 
+// ── 인스턴싱 배치 — 같은 지오메트리+재질을 InstancedMesh 하나로 묶어 드로우콜 최소화
+function twinBatchPush(batch, geo, mat, x, y, z, rotY = 0) {
+  const key = geo.uuid + "|" + mat.uuid;
+  let e = batch.get(key);
+  if (!e) {
+    e = { geo, mat, list: [] };
+    batch.set(key, e);
+  }
+  e.list.push(x, y, z, rotY);
+}
+function twinBatchFlush(batch, group) {
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const eu = new THREE.Euler();
+  const pos = new THREE.Vector3();
+  const one = new THREE.Vector3(1, 1, 1);
+  batch.forEach((e) => {
+    const n = e.list.length / 4;
+    if (!n) return;
+    const im = new THREE.InstancedMesh(e.geo, e.mat, n);
+    im.castShadow = true;
+    im.receiveShadow = true;
+    for (let i = 0; i < n; i++) {
+      pos.set(e.list[i * 4], e.list[i * 4 + 1], e.list[i * 4 + 2]);
+      eu.set(0, e.list[i * 4 + 3], 0);
+      q.setFromEuler(eu);
+      m.compose(pos, q, one);
+      im.setMatrixAt(i, m);
+    }
+    im.instanceMatrix.needsUpdate = true;
+    group.add(im);
+  });
+  batch.clear();
+}
+
 // 랙 유닛 생성 — spec: {col,row,len,dir:'h'|'v',levels,fill}
 // dir 'h': 베이가 +col(x)로, dir 'v': 베이가 +row(z)로 진행
-function buildTwinRackUnit(group, res, spec, boxMat) {
+function buildTwinRackUnit(group, res, spec, boxMat, batch) {
   const { col, row, len, levels, fill } = spec;
   const horiz = spec.dir !== "v";
   const H = levels * TWIN_LEVEL_H;
   const postGeo = twinPostGeo(res, levels);
   const depthBase = (1 - TWIN_DEPTH) / 2;
   const yRot = horiz ? 0 : Math.PI / 2;
-  const place = (mesh, bayOff, depthOff, y) => {
-    if (horiz) mesh.position.set(col + bayOff, y, row + depthOff);
-    else mesh.position.set(col + depthOff, y, row + bayOff);
+  const push = (geo, mat, bayOff, depthOff, y, rot = 0) => {
+    const x = horiz ? col + bayOff : col + depthOff;
+    const z = horiz ? row + depthOff : row + bayOff;
+    twinBatchPush(batch, geo, mat, x, y, z, rot);
   };
   // 기둥 (베이 경계마다 앞/뒤)
   for (let b = 0; b <= len; b++) {
-    for (const dOff of [depthBase, depthBase + TWIN_DEPTH]) {
-      const p = new THREE.Mesh(postGeo, res.steel);
-      place(p, b, dOff, H / 2);
-      p.castShadow = true;
-      group.add(p);
-    }
+    for (const dOff of [depthBase, depthBase + TWIN_DEPTH]) push(postGeo, res.steel, b, dOff, H / 2);
   }
   // 가로 빔 (단마다 앞/뒤)
   const beamGeo = twinBeamGeo(res, len);
   for (let l = 1; l <= levels; l++) {
-    for (const dOff of [depthBase, depthBase + TWIN_DEPTH]) {
-      const beam = new THREE.Mesh(beamGeo, res.beam);
-      place(beam, len / 2, dOff, l * TWIN_LEVEL_H - 0.12);
-      beam.rotation.y = yRot;
-      beam.castShadow = true;
-      group.add(beam);
-    }
+    for (const dOff of [depthBase, depthBase + TWIN_DEPTH])
+      push(beamGeo, res.beam, len / 2, dOff, l * TWIN_LEVEL_H - 0.12, yRot);
   }
   // 팔레트 + 적재 박스
   const addPallet = (b, l, mat) => {
     const y = l * TWIN_LEVEL_H + 0.06;
-    const pal = new THREE.Mesh(res.palGeo, res.wood);
-    place(pal, b + 0.5, depthBase + TWIN_DEPTH / 2, y);
-    pal.rotation.y = yRot;
-    pal.castShadow = true;
-    group.add(pal);
-    const box = new THREE.Mesh(res.boxGeo, mat);
-    place(box, b + 0.5, depthBase + TWIN_DEPTH / 2, y + TWIN_LEVEL_H * 0.32);
-    box.rotation.y = yRot;
-    box.castShadow = true;
-    group.add(box);
+    push(res.palGeo, res.wood, b + 0.5, depthBase + TWIN_DEPTH / 2, y, yRot);
+    push(res.boxGeo, mat, b + 0.5, depthBase + TWIN_DEPTH / 2, y + TWIN_LEVEL_H * 0.32, yRot);
   };
   if (Array.isArray(spec.placements)) {
     // 재고 연동: 셀별 화주 색상 + 정렬된 위치
@@ -3221,13 +3261,14 @@ function buildTwinBlocks(items) {
   if (!items || !items.length) return;
 
   const res = twinResources();
+  const batch = new Map();
   items.forEach((spec) => {
     if (elementTypeInfo(spec.type).shape === "area") {
-      buildTwinArea(group, res, spec);
+      buildTwinArea(group, res, spec, batch);
       return;
     }
     const boxMat = twinBoxMat(res, spec.color || "#5ac8fa");
-    buildTwinRackUnit(group, res, spec, boxMat);
+    buildTwinRackUnit(group, res, spec, boxMat, batch);
     const horiz = spec.dir !== "v";
     const H = spec.levels * TWIN_LEVEL_H;
     const pickGeo = horiz
@@ -3252,20 +3293,21 @@ function buildTwinBlocks(items) {
     group.add(pick);
     twinState.pick.push(pick);
   });
+  twinBatchFlush(batch, group);
 }
 
 // 사각 영역 요소 (사무실/도크/작업장/통로/기타)
-function buildTwinArea(group, res, spec) {
+function buildTwinArea(group, res, spec, batch) {
   const { type } = spec;
   const color = new THREE.Color(spec.color || elementTypeInfo(type).color);
   const cx = spec.col + spec.w / 2;
   const cz = spec.row + spec.d / 2;
   let H;
   if (type === "office") H = buildTwinOffice(group, spec, color);
-  else if (type === "dock") H = buildTwinDock(group, spec, color);
-  else if (type === "work") H = buildTwinWork(group, spec, color);
+  else if (type === "dock") H = buildTwinDock(group, spec, color, batch);
+  else if (type === "work") H = buildTwinWork(group, spec, color, batch);
   else if (type === "aisle") H = buildTwinAisle(group, spec, color);
-  else if (type === "column") H = buildTwinColumn(group, spec, color);
+  else if (type === "column") H = buildTwinColumn(group, spec, color, batch);
   else if (type === "wall") H = buildTwinWall(group, spec, color);
   else H = buildTwinGeneric(group, spec, color);
 
@@ -3321,7 +3363,7 @@ function buildTwinOffice(group, spec, color) {
   return H;
 }
 
-function buildTwinDock(group, spec, color) {
+function buildTwinDock(group, spec, color, batch) {
   const { col, row, w, d } = spec;
   const cx = col + w / 2;
   const cz = row + d / 2;
@@ -3332,26 +3374,28 @@ function buildTwinDock(group, spec, color) {
   apron.position.set(cx, 0.03, cz);
   apron.receiveShadow = true;
   group.add(apron);
-  const doorMat = new THREE.MeshStandardMaterial({ color: 0xb8c2cf, roughness: 0.5, metalness: 0.4 });
+  const res = twinResources();
   const horiz = w >= d;
   const along = horiz ? w : d;
   const count = Math.max(1, Math.floor(along / 2));
   const doorH = 2.0;
+  const doorGeo = horiz ? res.dockDoorGeoH : res.dockDoorGeoV;
   for (let i = 0; i < count; i++) {
     const t = (i + 0.5) * (along / count);
-    const door = new THREE.Mesh(
-      new THREE.BoxGeometry(horiz ? 1.2 : 0.16, doorH, horiz ? 0.16 : 1.2),
-      doorMat,
-    );
-    if (horiz) door.position.set(col + t, doorH / 2, row + 0.2);
-    else door.position.set(col + 0.2, doorH / 2, row + t);
-    door.castShadow = true;
-    group.add(door);
+    const x = horiz ? col + t : col + 0.2;
+    const z = horiz ? row + 0.2 : row + t;
+    if (batch) twinBatchPush(batch, doorGeo, res.doorMat, x, doorH / 2, z);
+    else {
+      const door = new THREE.Mesh(doorGeo, res.doorMat);
+      door.position.set(x, doorH / 2, z);
+      door.castShadow = true;
+      group.add(door);
+    }
   }
   return doorH;
 }
 
-function buildTwinWork(group, spec, color) {
+function buildTwinWork(group, spec, color, batch) {
   const { col, row, w, d } = spec;
   const cx = col + w / 2;
   const cz = row + d / 2;
@@ -3362,15 +3406,17 @@ function buildTwinWork(group, spec, color) {
   floorZone.position.set(cx, 0.025, cz);
   floorZone.receiveShadow = true;
   group.add(floorZone);
-  const tableMat = new THREE.MeshStandardMaterial({ color: 0x9aa7b6, roughness: 0.6, metalness: 0.2 });
-  const tableGeo = new THREE.BoxGeometry(1.2, 0.5, 0.7);
+  const res = twinResources();
   let tables = 0;
   for (let x = col + 1; x < col + w - 0.5 && tables < 60; x += 2.2) {
     for (let z = row + 0.8; z < row + d - 0.5 && tables < 60; z += 1.8) {
-      const t = new THREE.Mesh(tableGeo, tableMat);
-      t.position.set(x, 0.3, z);
-      t.castShadow = true;
-      group.add(t);
+      if (batch) twinBatchPush(batch, res.tableGeo, res.tableMat, x, 0.3, z);
+      else {
+        const t = new THREE.Mesh(res.tableGeo, res.tableMat);
+        t.position.set(x, 0.3, z);
+        t.castShadow = true;
+        group.add(t);
+      }
       tables++;
     }
   }
@@ -3395,33 +3441,39 @@ function buildTwinAisle(group, spec, color) {
   return 0.04;
 }
 
-// 구조 기둥 — 랙보다 높은 가는 콘크리트 기둥
-function buildTwinColumn(group, spec, color) {
+// 구조 기둥 — 랙보다 높은 가는 콘크리트 기둥 (인스턴싱)
+function buildTwinColumn(group, spec, color, batch) {
+  const res = twinResources();
   const w = spec.w || 1;
   const d = spec.d || 1;
   const cx = spec.col + w / 2;
   const cz = spec.row + d / 2;
   const H = 5.6; // 랙(4.2)보다 높게 — 구조물로 인식
-  const t = Math.min(0.85, Math.max(0.42, Math.min(w, d) * 0.6));
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.08 });
-  const post = new THREE.Mesh(new THREE.BoxGeometry(t, H, t), mat);
-  post.position.set(cx, H / 2, cz);
-  post.castShadow = true;
-  post.receiveShadow = true;
-  group.add(post);
-  const cap = new THREE.Mesh(
-    new THREE.BoxGeometry(t * 1.5, 0.22, t * 1.5),
-    new THREE.MeshStandardMaterial({ color: 0x5b6472, roughness: 0.85 }),
-  );
-  cap.position.set(cx, H + 0.11, cz);
-  cap.castShadow = true;
-  group.add(cap);
-  const edge = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(t, H, t)),
-    new THREE.LineBasicMaterial({ color: 0x3a4453 }),
-  );
-  edge.position.set(cx, H / 2, cz);
-  group.add(edge);
+  const t = Math.round(Math.min(0.85, Math.max(0.42, Math.min(w, d) * 0.6)) * 100) / 100;
+  const hex = "#" + new THREE.Color(color).getHexString();
+  if (!res.colMatByColor.has(hex)) {
+    res.colMatByColor.set(hex, new THREE.MeshStandardMaterial({ color: new THREE.Color(hex), roughness: 0.9, metalness: 0.08 }));
+  }
+  const mat = res.colMatByColor.get(hex);
+  const kPost = `p${t}`;
+  if (!res.colGeoByKey.has(kPost)) res.colGeoByKey.set(kPost, new THREE.BoxGeometry(t, H, t));
+  const kCap = `c${t}`;
+  if (!res.colGeoByKey.has(kCap)) res.colGeoByKey.set(kCap, new THREE.BoxGeometry(t * 1.5, 0.22, t * 1.5));
+  const postGeo = res.colGeoByKey.get(kPost);
+  const capGeo = res.colGeoByKey.get(kCap);
+  if (batch) {
+    twinBatchPush(batch, postGeo, mat, cx, H / 2, cz);
+    twinBatchPush(batch, capGeo, res.colCapMat, cx, H + 0.11, cz);
+  } else {
+    const post = new THREE.Mesh(postGeo, mat);
+    post.position.set(cx, H / 2, cz);
+    post.castShadow = true;
+    group.add(post);
+    const cap = new THREE.Mesh(capGeo, res.colCapMat);
+    cap.position.set(cx, H + 0.11, cz);
+    cap.castShadow = true;
+    group.add(cap);
+  }
   return H;
 }
 
@@ -3593,9 +3645,18 @@ function rackBgView(plan) {
 function applyRackBgTransform() {
   const img = $("#rackFloorImage");
   if (!img) return;
-  const v = rackBgView(getFloorplan(twinActiveCenter(), twinActiveFloor()));
+  const plan = getFloorplan(twinActiveCenter(), twinActiveFloor());
+  const v = rackBgView(plan);
   img.style.transformOrigin = "center center";
   img.style.transform = `translate(${v.x}%, ${v.y}%) scale(${v.sx / 100}, ${v.sy / 100})`;
+  // 도면 on/off
+  if (v.off) img.style.display = "none";
+  else if (plan.image) img.style.display = "block";
+  const tgl = $("#bgToggle");
+  if (tgl) {
+    tgl.textContent = v.off ? "도면 OFF" : "도면 ON";
+    tgl.classList.toggle("off", !!v.off);
+  }
   const slider = $("#bgScale");
   if (slider && document.activeElement !== slider) slider.value = Math.round((v.sx + v.sy) / 2);
   const val = $("#bgScaleVal");
@@ -4000,6 +4061,12 @@ function bindRackEditor() {
   $("#bgWminus")?.addEventListener("click", () => updateRackBgView({ dsx: -1 }));
   $("#bgHplus")?.addEventListener("click", () => updateRackBgView({ dsy: 1 }));
   $("#bgHminus")?.addEventListener("click", () => updateRackBgView({ dsy: -1 }));
+  $("#bgToggle")?.addEventListener("click", () => {
+    const v = rackBgView(getFloorplan(twinActiveCenter(), twinActiveFloor()));
+    v.off = !v.off;
+    saveState();
+    applyRackBgTransform();
+  });
   $("#bgAuto")?.addEventListener("click", autoAlignRackBg);
   $("#bgReset")?.addEventListener("click", () => updateRackBgView({ reset: true }));
   document.querySelectorAll("[data-bg-nudge]").forEach((btn) =>

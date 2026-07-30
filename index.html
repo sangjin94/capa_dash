@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=9" />
+    <link rel="stylesheet" href="./styles.css?v=10" />
   </head>
   <body>
     <div class="app-shell">
@@ -311,6 +311,7 @@
               <div class="rack-editor-main">
                 <div class="rack-editor-bar">
                   <div class="bg-adjust" title="도면(배경)을 확대·축소·이동해 내가 그린 랙에 맞춥니다. 랙 위치는 그대로 유지됩니다.">
+                    <button type="button" id="bgToggle" class="mini bg-toggle" title="배경 PDF 도면을 켜고 끕니다">도면 ON</button>
                     <span class="bg-adjust-label">도면 맞춤</span>
                     <button type="button" id="bgZoomOut" class="ghost mini">−</button>
                     <input id="bgScale" type="range" min="20" max="400" step="2" value="100" />
@@ -426,9 +427,21 @@
                   <span class="save-status" id="inventoryStatus">재고 미연동</span>
                 </div>
               </div>
-              <div class="twin-photo-body">
-                <img id="twinPhotoImg" alt="센터 사진" />
-                <div class="twin-photo-empty" id="twinPhotoEmpty">등록된 센터 사진이 없습니다. ‘사진 업로드’로 추가하세요.</div>
+              <div class="twin-dual">
+                <figure class="dual-pane">
+                  <figcaption>센터 사진</figcaption>
+                  <div class="twin-photo-body">
+                    <img id="twinPhotoImg" alt="센터 사진" />
+                    <div class="twin-photo-empty" id="twinPhotoEmpty">등록된 센터 사진이 없습니다. ‘사진 업로드’로 추가하세요.</div>
+                  </div>
+                </figure>
+                <figure class="dual-pane">
+                  <figcaption>PDF 도면 <span id="twinPlanFloor" class="dual-sub"></span></figcaption>
+                  <div class="twin-photo-body">
+                    <img id="twinPlanImg" alt="센터 도면" />
+                    <div class="twin-photo-empty" id="twinPlanEmpty">도면이 없습니다. ‘도면 업로드’로 추가하세요.</div>
+                  </div>
+                </figure>
               </div>
             </div>
           </section>
@@ -519,6 +532,6 @@
     <script src="./assets/vendor/OrbitControls.js"></script>
     <script src="./assets/vendor/xlsx.full.min.js"></script>
     <script src="./assets/vendor/pdf.min.js"></script>
-    <script src="./app.js?v=9"></script>
+    <script src="./app.js?v=10"></script>
   </body>
 </html>
