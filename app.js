@@ -39,7 +39,35 @@ const DEFAULT_FLOORPLANS = {
 };
 // floorplanKey → 기본 랙 배치(도면에서 1차 추출). 사용자가 편집하면 그 값이 우선.
 // 기본 랙/기둥/벽 배치 버전 — 올리면 기존 브라우저도 새 배치로 재시드됨
-const DEFAULT_RACKS_VERSION = 9;
+const DEFAULT_RACKS_VERSION = 10;
+// 남이천1센터 구조 기둥 — 같은 건물이라 전 층 공통(도면의 노란 마커에서 검출)
+const NAMI1_COLUMNS = [
+  {type:"column",col:165,row:21,w:2,d:2}, {type:"column",col:166,row:22,w:2,d:2}, {type:"column",col:168,row:21,w:2,d:2}, {type:"column",col:172,row:22,w:2,d:2},
+  {type:"column",col:121,row:23,w:2,d:2}, {type:"column",col:16,row:37,w:2,d:2}, {type:"column",col:27,row:37,w:2,d:2}, {type:"column",col:39,row:37,w:2,d:2},
+  {type:"column",col:61,row:37,w:2,d:2}, {type:"column",col:72,row:37,w:2,d:2}, {type:"column",col:94,row:37,w:2,d:2}, {type:"column",col:106,row:37,w:2,d:2},
+  {type:"column",col:128,row:37,w:2,d:2}, {type:"column",col:139,row:37,w:2,d:2}, {type:"column",col:150,row:37,w:2,d:2}, {type:"column",col:40,row:45,w:2,d:2},
+  {type:"column",col:48,row:45,w:2,d:2}, {type:"column",col:16,row:48,w:2,d:2}, {type:"column",col:27,row:48,w:2,d:2}, {type:"column",col:39,row:48,w:2,d:2},
+  {type:"column",col:61,row:48,w:2,d:2}, {type:"column",col:72,row:48,w:2,d:2}, {type:"column",col:94,row:48,w:2,d:2}, {type:"column",col:106,row:48,w:2,d:2},
+  {type:"column",col:117,row:48,w:2,d:2}, {type:"column",col:128,row:48,w:2,d:2}, {type:"column",col:139,row:48,w:2,d:2}, {type:"column",col:150,row:48,w:2,d:2},
+  {type:"column",col:161,row:48,w:2,d:2}, {type:"column",col:173,row:48,w:2,d:2}, {type:"column",col:184,row:48,w:2,d:2}, {type:"column",col:94,row:59,w:2,d:2},
+  {type:"column",col:106,row:59,w:2,d:2}, {type:"column",col:117,row:59,w:2,d:2}, {type:"column",col:128,row:59,w:2,d:2}, {type:"column",col:139,row:59,w:2,d:2},
+  {type:"column",col:150,row:59,w:2,d:2}, {type:"column",col:161,row:59,w:2,d:2}, {type:"column",col:173,row:59,w:2,d:2}, {type:"column",col:184,row:59,w:2,d:2},
+  {type:"column",col:16,row:59,w:2,d:2}, {type:"column",col:27,row:59,w:2,d:2}, {type:"column",col:61,row:59,w:2,d:2}, {type:"column",col:72,row:59,w:2,d:2},
+  {type:"column",col:40,row:68,w:2,d:2}, {type:"column",col:48,row:68,w:2,d:2}, {type:"column",col:51,row:70,w:2,d:2}, {type:"column",col:16,row:71,w:2,d:2},
+  {type:"column",col:27,row:71,w:2,d:2}, {type:"column",col:39,row:71,w:2,d:2}, {type:"column",col:61,row:71,w:2,d:2}, {type:"column",col:94,row:71,w:2,d:2},
+  {type:"column",col:128,row:71,w:2,d:2}, {type:"column",col:139,row:71,w:2,d:2}, {type:"column",col:150,row:71,w:2,d:2}, {type:"column",col:161,row:71,w:2,d:2},
+  {type:"column",col:173,row:71,w:2,d:2}, {type:"column",col:184,row:71,w:2,d:2}, {type:"column",col:16,row:82,w:2,d:2}, {type:"column",col:27,row:82,w:2,d:2},
+  {type:"column",col:39,row:82,w:2,d:2}, {type:"column",col:50,row:82,w:2,d:2}, {type:"column",col:61,row:82,w:2,d:2}, {type:"column",col:72,row:82,w:2,d:2},
+  {type:"column",col:106,row:82,w:2,d:2}, {type:"column",col:128,row:82,w:2,d:2}, {type:"column",col:139,row:82,w:2,d:2}, {type:"column",col:161,row:82,w:2,d:2},
+  {type:"column",col:173,row:82,w:2,d:2}, {type:"column",col:184,row:82,w:2,d:2}, {type:"column",col:94,row:93,w:2,d:2}, {type:"column",col:106,row:93,w:2,d:2},
+  {type:"column",col:128,row:93,w:2,d:2}, {type:"column",col:139,row:93,w:2,d:2}, {type:"column",col:161,row:93,w:2,d:2}, {type:"column",col:173,row:93,w:2,d:2},
+  {type:"column",col:16,row:93,w:2,d:2}, {type:"column",col:27,row:93,w:2,d:2}, {type:"column",col:39,row:93,w:2,d:2}, {type:"column",col:50,row:93,w:2,d:2},
+  {type:"column",col:61,row:93,w:2,d:2}, {type:"column",col:72,row:93,w:2,d:2}, {type:"column",col:40,row:99,w:2,d:2}, {type:"column",col:39,row:104,w:2,d:2},
+  {type:"column",col:50,row:104,w:2,d:2}, {type:"column",col:72,row:104,w:2,d:2}, {type:"column",col:94,row:104,w:2,d:2}, {type:"column",col:106,row:104,w:2,d:2},
+  {type:"column",col:117,row:104,w:2,d:2}, {type:"column",col:128,row:104,w:2,d:2}, {type:"column",col:139,row:104,w:2,d:2}, {type:"column",col:16,row:104,w:2,d:2},
+  {type:"column",col:27,row:104,w:2,d:2}, {type:"column",col:61,row:104,w:2,d:2}, {type:"column",col:55,row:106,w:2,d:2}, {type:"column",col:139,row:114,w:2,d:2},
+  {type:"column",col:117,row:115,w:2,d:2}, {type:"column",col:128,row:115,w:2,d:2},
+];
 const DEFAULT_RACK_LAYOUTS = {
   // 남이천1센터 지하1층 — 도면 픽셀에서 216x126 객자로 진통 산정
   남이천1센터: [
@@ -87,39 +115,7 @@ const DEFAULT_RACK_LAYOUTS = {
     {type:"rack",dir:"v",col:148,row:33,len:53},{type:"rack",dir:"v",col:150,row:50,len:20},{type:"rack",dir:"v",col:151,row:50,len:20},
     {type:"work",col:172,row:84,w:13,d:7,name:"분배대기장",color:"#10b981",height:1},{type:"work",col:186,row:60,w:6,d:12,name:"분배대기장",color:"#10b981",height:1},{type:"wall",col:156,row:24,w:27,d:13,name:"VAS 작업장"},
     {type:"wall",col:187,row:24,w:8,d:12,name:"VAS"},{type:"wall",col:7,row:75,w:33,d:2},{type:"wall",col:51,row:75,w:33,d:2},
-    {type:"column",col:165,row:21,w:2,d:2},{type:"column",col:166,row:22,w:2,d:2},{type:"column",col:168,row:21,w:2,d:2},
-    {type:"column",col:172,row:22,w:2,d:2},{type:"column",col:121,row:23,w:2,d:2},{type:"column",col:16,row:37,w:2,d:2},
-    {type:"column",col:27,row:37,w:2,d:2},{type:"column",col:39,row:37,w:2,d:2},{type:"column",col:61,row:37,w:2,d:2},
-    {type:"column",col:72,row:37,w:2,d:2},{type:"column",col:94,row:37,w:2,d:2},{type:"column",col:106,row:37,w:2,d:2},
-    {type:"column",col:128,row:37,w:2,d:2},{type:"column",col:139,row:37,w:2,d:2},{type:"column",col:150,row:37,w:2,d:2},
-    {type:"column",col:40,row:45,w:2,d:2},{type:"column",col:48,row:45,w:2,d:2},{type:"column",col:16,row:48,w:2,d:2},
-    {type:"column",col:27,row:48,w:2,d:2},{type:"column",col:39,row:48,w:2,d:2},{type:"column",col:61,row:48,w:2,d:2},
-    {type:"column",col:72,row:48,w:2,d:2},{type:"column",col:94,row:48,w:2,d:2},{type:"column",col:106,row:48,w:2,d:2},
-    {type:"column",col:117,row:48,w:2,d:2},{type:"column",col:128,row:48,w:2,d:2},{type:"column",col:139,row:48,w:2,d:2},
-    {type:"column",col:150,row:48,w:2,d:2},{type:"column",col:161,row:48,w:2,d:2},{type:"column",col:173,row:48,w:2,d:2},
-    {type:"column",col:184,row:48,w:2,d:2},{type:"column",col:94,row:59,w:2,d:2},{type:"column",col:106,row:59,w:2,d:2},
-    {type:"column",col:117,row:59,w:2,d:2},{type:"column",col:128,row:59,w:2,d:2},{type:"column",col:139,row:59,w:2,d:2},
-    {type:"column",col:150,row:59,w:2,d:2},{type:"column",col:161,row:59,w:2,d:2},{type:"column",col:173,row:59,w:2,d:2},
-    {type:"column",col:184,row:59,w:2,d:2},{type:"column",col:16,row:59,w:2,d:2},{type:"column",col:27,row:59,w:2,d:2},
-    {type:"column",col:61,row:59,w:2,d:2},{type:"column",col:72,row:59,w:2,d:2},{type:"column",col:40,row:68,w:2,d:2},
-    {type:"column",col:48,row:68,w:2,d:2},{type:"column",col:51,row:70,w:2,d:2},{type:"column",col:16,row:71,w:2,d:2},
-    {type:"column",col:27,row:71,w:2,d:2},{type:"column",col:39,row:71,w:2,d:2},{type:"column",col:61,row:71,w:2,d:2},
-    {type:"column",col:94,row:71,w:2,d:2},{type:"column",col:128,row:71,w:2,d:2},{type:"column",col:139,row:71,w:2,d:2},
-    {type:"column",col:150,row:71,w:2,d:2},{type:"column",col:161,row:71,w:2,d:2},{type:"column",col:173,row:71,w:2,d:2},
-    {type:"column",col:184,row:71,w:2,d:2},{type:"column",col:16,row:82,w:2,d:2},{type:"column",col:27,row:82,w:2,d:2},
-    {type:"column",col:39,row:82,w:2,d:2},{type:"column",col:50,row:82,w:2,d:2},{type:"column",col:61,row:82,w:2,d:2},
-    {type:"column",col:72,row:82,w:2,d:2},{type:"column",col:106,row:82,w:2,d:2},{type:"column",col:128,row:82,w:2,d:2},
-    {type:"column",col:139,row:82,w:2,d:2},{type:"column",col:161,row:82,w:2,d:2},{type:"column",col:173,row:82,w:2,d:2},
-    {type:"column",col:184,row:82,w:2,d:2},{type:"column",col:94,row:93,w:2,d:2},{type:"column",col:106,row:93,w:2,d:2},
-    {type:"column",col:128,row:93,w:2,d:2},{type:"column",col:139,row:93,w:2,d:2},{type:"column",col:161,row:93,w:2,d:2},
-    {type:"column",col:173,row:93,w:2,d:2},{type:"column",col:16,row:93,w:2,d:2},{type:"column",col:27,row:93,w:2,d:2},
-    {type:"column",col:39,row:93,w:2,d:2},{type:"column",col:50,row:93,w:2,d:2},{type:"column",col:61,row:93,w:2,d:2},
-    {type:"column",col:72,row:93,w:2,d:2},{type:"column",col:40,row:99,w:2,d:2},{type:"column",col:39,row:104,w:2,d:2},
-    {type:"column",col:50,row:104,w:2,d:2},{type:"column",col:72,row:104,w:2,d:2},{type:"column",col:94,row:104,w:2,d:2},
-    {type:"column",col:106,row:104,w:2,d:2},{type:"column",col:117,row:104,w:2,d:2},{type:"column",col:128,row:104,w:2,d:2},
-    {type:"column",col:139,row:104,w:2,d:2},{type:"column",col:16,row:104,w:2,d:2},{type:"column",col:27,row:104,w:2,d:2},
-    {type:"column",col:61,row:104,w:2,d:2},{type:"column",col:55,row:106,w:2,d:2},{type:"column",col:139,row:114,w:2,d:2},
-    {type:"column",col:117,row:115,w:2,d:2},{type:"column",col:128,row:115,w:2,d:2},
+    ...NAMI1_COLUMNS,
   ],
   "남이천1센터||지상2층": [
     {type:"rack",dir:"h",col:120,row:32,len:44},{type:"rack",dir:"h",col:120,row:33,len:44},{type:"rack",dir:"h",col:85,row:38,len:32},
@@ -133,6 +129,7 @@ const DEFAULT_RACK_LAYOUTS = {
     {type:"rack",dir:"h",col:109,row:86,len:55},{type:"rack",dir:"h",col:109,row:88,len:55},{type:"rack",dir:"h",col:58,row:92,len:48},
     {type:"rack",dir:"h",col:58,row:96,len:48},{type:"rack",dir:"h",col:147,row:101,len:55},{type:"rack",dir:"h",col:147,row:106,len:55},
     {type:"rack",dir:"h",col:108,row:113,len:30},{type:"rack",dir:"h",col:108,row:115,len:30},
+    ...NAMI1_COLUMNS,
   ],
   "남이천1센터||지상4층": [
     {type:"rack",dir:"h",col:74,row:37,len:42},{type:"rack",dir:"h",col:74,row:38,len:42},{type:"rack",dir:"h",col:40,row:42,len:90},
@@ -149,6 +146,7 @@ const DEFAULT_RACK_LAYOUTS = {
     {type:"rack",dir:"h",col:35,row:105,len:84},{type:"rack",dir:"h",col:81,row:108,len:38},{type:"rack",dir:"h",col:81,row:109,len:38},
     {type:"rack",dir:"h",col:86,row:111,len:33},{type:"rack",dir:"h",col:86,row:112,len:33},{type:"rack",dir:"h",col:97,row:114,len:29},
     {type:"rack",dir:"h",col:97,row:115,len:29},
+    ...NAMI1_COLUMNS,
   ],
 };
 let _rackSeq = 0;

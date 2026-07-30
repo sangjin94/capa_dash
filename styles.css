@@ -2523,13 +2523,25 @@ label textarea {
 .twin-fs { padding: 6px 12px; font-size: 12px; font-weight: 600; border-radius: 9px; cursor: pointer;
   background: #1c2a3e; color: #cdd8e8; border: 1px solid rgba(120,160,210,.28); white-space: nowrap; }
 .twin-fs:hover { background: #24354c; }
-.twin-panel:fullscreen, .twin-panel.fs { padding: 18px 20px; overflow: auto; background: #0b111c; }
+.twin-panel:fullscreen, .twin-panel.fs { padding: 14px 18px; overflow: auto; background: #0b111c; }
+/* 폴백 최대화: 전체화면 API가 막힌 환경에서도 화면 전체를 덮도록 */
+.twin-panel.fs { position: fixed; inset: 0; z-index: 999; margin: 0; border-radius: 0; }
 .twin-panel:fullscreen .twin-stage, .twin-panel.fs .twin-stage { height: calc(100vh - 190px); margin-top: 12px; }
 /* 편집 화면: 종횡비(216/126)는 정합 기준이라 유지하고, 폭을 제한해 세로가 화면에 맞게 */
-.twin-panel:fullscreen .rack-editor-main, .twin-panel.fs .rack-editor-main { max-width: calc((100vh - 230px) * 216 / 126); }
-.twin-panel:fullscreen .rack-editor, .twin-panel.fs .rack-editor { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
-.twin-panel:fullscreen .twin-dual, .twin-panel.fs .twin-dual { display: none; } /* 전체화면에선 사진/도면 패널 숨김 */
+.twin-panel:fullscreen .rack-editor-main, .twin-panel.fs .rack-editor-main { max-width: calc((100vh - 120px) * 216 / 126); }
+/* 전체화면: 도면이 가득 차도록 1열로, 속성 패널은 우측에 떠 있는 오버레이로 */
+.twin-panel:fullscreen .rack-editor, .twin-panel.fs .rack-editor { position: relative; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.twin-panel:fullscreen .rack-editor-side, .twin-panel.fs .rack-editor-side {
+  position: absolute; top: 0; right: 0; width: 290px; max-height: calc(100vh - 130px); overflow: auto;
+  z-index: 6; background: rgba(15,22,34,.95); box-shadow: 0 8px 28px rgba(0,0,0,.5); }
+/* 전체화면에선 사진·업로드 패널, 설명문, 제목까지 숨겨 작업 영역을 최대화 */
+.twin-panel:fullscreen #twinPhoto, .twin-panel.fs #twinPhoto { display: none; }
 .twin-panel:fullscreen .panel-copy, .twin-panel.fs .panel-copy { display: none; }
+.twin-panel:fullscreen .panel-head h2, .twin-panel.fs .panel-head h2 { font-size: 14px; margin: 0; }
+.twin-panel:fullscreen .panel-head, .twin-panel.fs .panel-head { margin-bottom: 4px; }
+.twin-panel:fullscreen .rack-editor, .twin-panel.fs .rack-editor { margin-top: 8px; }
+.twin-panel:fullscreen .rack-editor-bar, .twin-panel.fs .rack-editor-bar { margin-bottom: 6px; }
+.twin-panel:fullscreen .rack-editor-hint, .twin-panel.fs .rack-editor-hint { display: none; }
 .bg-adjust-body { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .bg-adjust-body[hidden] { display: none; }
 .bg-fold.open { background: #24354c; color: #cdd8e8; }
