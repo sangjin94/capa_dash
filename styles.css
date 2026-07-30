@@ -2838,3 +2838,22 @@ label textarea {
 .rack-item.wall-free { min-height: 5px; border-radius: 1px; border-width: 1px;
   background: color-mix(in srgb, var(--rc) 55%, transparent); }
 .rack-item.wall-free span { font-size: 8px; }
+
+/* 미전산재고 입력줄 */
+.inv-offbook-add { display: grid; grid-template-columns: 110px 1fr 100px 1.2fr 1.4fr auto;
+  gap: 8px; align-items: end; padding: 12px; margin-top: 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: #fff9f0; }
+.inv-offbook-add label { display: grid; gap: 4px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.inv-offbook-add input, .inv-offbook-add select {
+  border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; background: #fff;
+  color: var(--ink); font-weight: 400; min-width: 0; }
+.inv-offbook-add input:focus, .inv-offbook-add select:focus {
+  outline: 2px solid rgba(11,92,171,.3); border-color: var(--brand); }
+.inv-table tbody tr.offbook-row { background: #fff9f0; }
+.inv-table tbody tr.offbook-row:hover { background: #fdf1de; cursor: default; }
+.ob-del { border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--muted); padding: 3px 7px; }
+.ob-del:hover { color: var(--danger); border-color: #f0b6b3; background: #fdeeed; }
+.inv-kpi.warn { background: #fff7ec; border-color: #f0cd9a; }
+.inv-kpi.warn strong { color: #92590a; }
+.inv-filters select:disabled { opacity: .45; }
+@media (max-width: 900px) { .inv-offbook-add { grid-template-columns: 1fr 1fr; } }

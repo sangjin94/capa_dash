@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=33" />
+    <link rel="stylesheet" href="./styles.css?v=34" />
   </head>
   <body>
     <div class="app-shell">
@@ -309,7 +309,7 @@
                 <div class="twin-kpi use"><span>사용 CAPA</span><strong id="twinUsed">–</strong></div>
                 <div class="twin-kpi free"><span>여유 CAPA</span><strong id="twinFree">–</strong></div>
                 <div class="twin-kpi"><span>점유율</span><strong id="twinRate">–</strong></div>
-                <div class="twin-kpi rackcapa" title="랙 1칸(베이) × 1단 = 1 PLT 기준으로 도면 배치에서 계산한 보관 CAPA"><span>랙 기준 CAPA</span><strong id="twinRackCapa">–</strong></div>
+                <div class="twin-kpi rackcapa" title="랙 1칸(베이) × 1단 = 1 PLT, 평치/벌크는 면적(칸) × 적재단수 × 유효적재율 기준으로 도면 배치에서 계산한 보관 CAPA"><span>도면 기준 CAPA</span><strong id="twinRackCapa">–</strong></div>
               </div>
               <div class="twin-hud twin-legend" id="twinLegend"></div>
               <div class="twin-tooltip" id="twinTooltip"></div>
@@ -440,6 +440,31 @@
                       <input id="wallColor" type="color" />
                     </label>
                   </div>
+                  <div id="bulkOnlyFields" hidden>
+                    <div class="rack-form-row">
+                      <label>가로(칸)
+                        <input id="bulkW" type="number" min="1" max="216" step="1" />
+                      </label>
+                      <label>세로(칸)
+                        <input id="bulkD" type="number" min="1" max="126" step="1" />
+                      </label>
+                    </div>
+                    <div class="rack-form-row">
+                      <label>적재 단수
+                        <input id="bulkStack" type="number" min="1" max="10" step="1" />
+                      </label>
+                      <label>유효 적재율(%)
+                        <input id="bulkRate" type="number" min="0" max="100" step="5" />
+                      </label>
+                    </div>
+                    <div class="rack-slots-row">보관 CAPA <strong id="bulkSlotsVal">–</strong></div>
+                    <label>화주사
+                      <input id="bulkCustomer" type="text" list="rackCustomerList" placeholder="비워두면 미지정" />
+                    </label>
+                    <label>색상
+                      <input id="bulkColor" type="color" />
+                    </label>
+                  </div>
                   <div id="areaOnlyFields" hidden>
                     <div class="rack-form-row">
                       <label>가로(칸)
@@ -523,6 +548,16 @@
               <button class="inv-tab active" data-inv-tab="cells" type="button">셀 목록</button>
               <button class="inv-tab" data-inv-tab="prefixes" type="button">랙열(접두)별 맵핑</button>
               <button class="inv-tab" data-inv-tab="racks" type="button">랙별 점유</button>
+              <button class="inv-tab" data-inv-tab="offbook" type="button">미전산재고</button>
+            </div>
+
+            <div class="inv-offbook-add" id="invOffbookAdd" hidden>
+              <label>층<select id="obFloor"></select></label>
+              <label>화주<input id="obCustomer" type="text" list="rackCustomerList" placeholder="화주사명" /></label>
+              <label>수량(PLT)<input id="obPlt" type="number" min="0" step="0.5" placeholder="0" /></label>
+              <label>위치<input id="obArea" type="text" placeholder="랙열 접두 또는 구역명 (예: 02-01, 평치A)" /></label>
+              <label>사유<input id="obReason" type="text" placeholder="예: 입고 전산 미처리, 반품 대기" /></label>
+              <button class="primary" id="obAdd" type="button">+ 추가</button>
             </div>
 
             <div class="inv-filters" id="invFilters">
@@ -736,6 +771,6 @@
       <figcaption id="imgModalCaption"></figcaption>
       <img id="imgModalImg" alt="" />
     </div>
-    <script src="./app.js?v=38"></script>
+    <script src="./app.js?v=41"></script>
   </body>
 </html>

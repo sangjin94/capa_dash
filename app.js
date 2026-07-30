@@ -209,10 +209,17 @@ function materializeDefaultRack(e) {
       th: e.th || WALL_TH_DEFAULT, height: e.height || 1, name: e.name || "", color: e.color || "#ef4444",
     };
   }
-  return {
+  const base = {
     id, type: e.type, col: e.col, row: e.row, w: e.w || 1, d: e.d || 1,
     name: e.name || "", color: e.color || (e.type === "column" ? "#9aa3b2" : e.type === "wall" ? "#ef4444" : "#64748b"), height: e.height || 1,
   };
+  if (e.type === "bulk") {
+    base.stack = e.stack || BULK_STACK_DEFAULT;
+    base.rate = e.rate == null ? BULK_RATE_DEFAULT : e.rate;
+    base.customer = e.customer || "";
+    if (!e.color) base.color = "#a16207";
+  }
+  return base;
 }
 
 // 남이천1센터 남동측 사선 외벽 — 도면 PNG에서 검출(층별로 끝점이 조금 다름)
@@ -275,6 +282,7 @@ const defaultState = {
   centerInfo: {},
   shipperTargetAverages: {},
   kakaoApiKey: "",
+  offbook: {},
 };
 
 let state = loadState();
@@ -336,6 +344,7 @@ function loadState() {
       gaonShippers: parsed.gaonShippers || {},
       photoPanelOpen: !!parsed.photoPanelOpen,
       nami1DiagWalls: !!parsed.nami1DiagWalls,
+      offbook: parsed.offbook || {},
     };
   } catch {
     return structuredClone(defaultState);
@@ -512,6 +521,7 @@ function normalizeCenterInfo(center) {
 
 let storageWarned = false;
 function saveState() {
+  invalidateCapaCache(); // 배치·재고·미전산이 바뀌면 층별 실재고 합계를 다시 계산
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     return true;
@@ -832,7 +842,70 @@ function percent(part, total) {
   return Math.round((part / total) * 100);
 }
 
+/* ===== 미전산재고 — gaon에 안 올라간 실물 재고 =====
+   {id, floor, customer, plt, area, reason, createdAt} 를 센터별로 보관하고
+   사용 CAPA에 합산한다. */
+function offbookList(center) {
+  if (!state.offbook) state.offbook = {};
+  if (!Array.isArray(state.offbook[center])) state.offbook[center] = [];
+  return state.offbook[center];
+}
+function offbookPlt(center, floor) {
+  return offbookList(center).reduce(
+    (sum, r) => (floor && r.floor !== floor ? sum : sum + number(r.plt)),
+    0,
+  );
+}
+
+// 층별 gaon 실재고(PLT) — 그 층 랙에 맵핑된 셀만 합산. 매 렌더 반복 호출이라 캐시한다.
+let _floorInvCache = new Map();
+function invalidateCapaCache() {
+  _floorInvCache = new Map();
+}
+function floorInventoryPlt(center, floor) {
+  const inv = getInventory(center);
+  if (!inv) return 0;
+  const key = `${center}|${floor}|${inv.importedAt || ""}`;
+  if (_floorInvCache.has(key)) return _floorInvCache.get(key);
+  let plt = 0;
+  (getRackLayout(center, floor).racks || []).forEach((r) => {
+    if (r.type === "rack" && r.cellPrefix) plt += occupiedForRack(inv, r).plt;
+  });
+  plt = Math.round(plt * 10) / 10;
+  _floorInvCache.set(key, plt);
+  return plt;
+}
+
+// 실측 기준 CAPA — 전체는 도면 랙(베이×단), 사용은 gaon 실재고 + 미전산재고.
+// 도면이나 재고가 없는 층은 기존 수기입력값으로 폴백한다.
+function measuredTotals(center, floor, manual) {
+  const slots = floorRackCapa(center, floor).slots;
+  const invPlt = floorInventoryPlt(center, floor);
+  const off = offbookPlt(center, floor);
+  return {
+    capacity: slots || manual.capacity,
+    used: invPlt || off ? Math.round((invPlt + off) * 10) / 10 : manual.used,
+  };
+}
+
 function centerTotals(center, filterMajor = ALL) {
+  if (filterMajor === ALL) {
+    // 센터 합계도 층별 실측값을 더한다 (분류 필터가 걸리면 수기입력 기준 유지)
+    return getCenterFloors(center).reduce(
+      (total, floor) => {
+        const f = floorTotals(center, floor);
+        total.capacity += f.capacity;
+        total.used += f.used;
+        total.shippers.push(...f.shippers);
+        return total;
+      },
+      { capacity: 0, used: 0, shippers: [] },
+    );
+  }
+  return centerTotalsManual(center, filterMajor);
+}
+
+function centerTotalsManual(center, filterMajor = ALL) {
   return getCenterFloors(center).reduce(
     (total, floor) => {
       allCategories().forEach((category) => {
@@ -858,6 +931,12 @@ function centerTotals(center, filterMajor = ALL) {
 }
 
 function floorTotals(center, floor, filterMajor = ALL) {
+  const manual = floorTotalsManual(center, floor, filterMajor);
+  if (filterMajor !== ALL) return manual;
+  return { ...manual, ...measuredTotals(center, floor, manual) };
+}
+
+function floorTotalsManual(center, floor, filterMajor = ALL) {
   return allCategories().reduce(
     (total, category) => {
       if (filterMajor !== ALL && category.major !== filterMajor) return total;
@@ -3003,8 +3082,12 @@ function render3DTwin() {
           height: Math.max(1, Math.round(number(e.height) || 1)),
           color: e.color || info.color,
           name: e.name || "", // 이름을 지정하지 않았으면 빈값 유지 (라벨 표시 판단용)
+          stack: e.type === "bulk" ? bulkStack(e) : undefined,
+          rate: e.type === "bulk" ? bulkRate(e) : undefined,
+          customer: e.customer || "",
+          _slots: e.type === "bulk" ? bulkSlots(e) : undefined,
         });
-        areaLegend.set(info.label, e.color || info.color);
+        areaLegend.set(e.type === "bulk" && e.customer ? e.customer : info.label, e.color || info.color);
       } else {
         const color = e.color || customerColor(e.customer);
         const capa = number(e.capa);
@@ -3081,7 +3164,10 @@ function render3DTwin() {
   const rcEl = $("#twinRackCapa");
   if (rcEl) {
     rcEl.textContent = rc.slots.toLocaleString("ko-KR");
-    rcEl.title = `랙 ${rc.racks}개 · 적재(추정) ${rc.filled.toLocaleString("ko-KR")} PLT`;
+    rcEl.title =
+      `랙 ${rc.racks}개 · ${(rc.slots - rc.bulkSlots).toLocaleString("ko-KR")} PLT` +
+      (rc.bulks ? `\n평치/벌크 ${rc.bulks}구역 · ${rc.bulkSlots.toLocaleString("ko-KR")} PLT` : "") +
+      `\n적재(추정) ${rc.filled.toLocaleString("ko-KR")} PLT`;
   }
 
   $("#twinLegend").innerHTML = [
@@ -3228,6 +3314,7 @@ const TWIN_DEPTH = 0.8; // 랙 깊이(1셀 내)
 // 요소 타입: rack=선(방향), 나머지=사각 영역
 const TWIN_ELEMENT_TYPES = {
   rack: { label: "랙", color: "#f59e0b", shape: "line" },
+  bulk: { label: "평치/벌크", color: "#a16207", shape: "area" }, // 바닥 직접 적치 — 면적 기반 CAPA
   office: { label: "사무실", color: "#3b82f6", shape: "area" },
   dock: { label: "도크/출입구", color: "#eab308", shape: "area" },
   work: { label: "임가공/작업장", color: "#10b981", shape: "area" },
@@ -3609,7 +3696,8 @@ function buildTwinArea(group, res, spec, batch) {
   const cx = spec.col + spec.w / 2;
   const cz = spec.row + spec.d / 2;
   let H;
-  if (type === "office") H = buildTwinOffice(group, spec, color);
+  if (type === "bulk") H = buildTwinBulk(group, spec, color, batch);
+  else if (type === "office") H = buildTwinOffice(group, spec, color);
   else if (type === "dock") H = buildTwinDock(group, spec, color, batch);
   else if (type === "work") H = buildTwinWork(group, spec, color, batch);
   else if (type === "aisle") H = buildTwinAisle(group, spec, color);
@@ -3620,7 +3708,15 @@ function buildTwinArea(group, res, spec, batch) {
   const ph = Math.max(H, 0.6);
   const pick = new THREE.Mesh(new THREE.BoxGeometry(spec.w, ph, spec.d), res.pickMat);
   pick.position.set(cx, ph / 2, cz);
-  pick.userData.zone = { _area: true, name: spec.name || elementTypeInfo(type).label, typeLabel: elementTypeInfo(type).label };
+  pick.userData.zone =
+    type === "bulk"
+      ? {
+          _area: true,
+          name: spec.name || (spec.customer ? `평치 · ${spec.customer}` : "평치/벌크"),
+          typeLabel: `평치/벌크 ${spec.w}×${spec.d}칸 · ${spec.stack}단 · ${spec.rate}%`,
+          capa: spec._slots,
+        }
+      : { _area: true, name: spec.name || elementTypeInfo(type).label, typeLabel: elementTypeInfo(type).label };
   group.add(pick);
   twinState.pick.push(pick);
 
@@ -3632,6 +3728,46 @@ function buildTwinArea(group, res, spec, batch) {
     group.add(label);
     twinState.labels.push(label);
   }
+}
+
+// 평치/벌크 적치 — 바닥 구역 위에 파렛트를 격자로 쌓아 보여준다
+function buildTwinBulk(group, spec, color, batch) {
+  const { col, row, w, d } = spec;
+  const stack = Math.max(1, Math.round(spec.stack || BULK_STACK_DEFAULT));
+  const rate = Math.max(0, Math.min(100, spec.rate == null ? BULK_RATE_DEFAULT : spec.rate)) / 100;
+  const res = twinResources();
+  const floorZone = new THREE.Mesh(
+    new THREE.BoxGeometry(w * 0.98, 0.05, d * 0.98),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.95, transparent: true, opacity: 0.42 }),
+  );
+  floorZone.position.set(col + w / 2, 0.025, row + d / 2);
+  floorZone.receiveShadow = true;
+  group.add(floorZone);
+
+  // 유효 적재율만큼만 칸을 채운다 (통로·작업여유는 비움). 과도한 인스턴스는 상한을 둔다
+  const mat = twinBoxMat(res, spec.color || elementTypeInfo("bulk").color);
+  const cells = [];
+  for (let x = 0; x < Math.round(w); x++) {
+    for (let z = 0; z < Math.round(d); z++) cells.push([x, z]);
+  }
+  const want = Math.min(cells.length, Math.round(cells.length * rate));
+  const stride = want > 0 ? cells.length / want : 0;
+  let placed = 0;
+  const MAX = 900;
+  for (let i = 0; i < want && placed < MAX; i++) {
+    const [x, z] = cells[Math.min(cells.length - 1, Math.floor(i * stride))];
+    for (let s = 0; s < stack; s++) {
+      const y = 0.06 + s * (TWIN_LEVEL_H * 0.72);
+      if (batch) twinBatchPush(batch, res.boxGeo, mat, col + x + 0.5, y, row + z + 0.5, 0);
+      else {
+        const b = new THREE.Mesh(res.boxGeo, mat);
+        b.position.set(col + x + 0.5, y, row + z + 0.5);
+        group.add(b);
+      }
+    }
+    placed++;
+  }
+  return 0.06 + stack * (TWIN_LEVEL_H * 0.72);
 }
 
 function buildTwinOffice(group, spec, color) {
@@ -4047,9 +4183,31 @@ function rackSlots(el) {
   const levels = Math.max(1, Math.round(number(el.levels) || TWIN_LEVELS));
   return len * levels;
 }
-// 층 단위 랙 기준 CAPA 집계
+// 평치/벌크 적치 — 랙 없이 바닥에 쌓는 구역.
+// 격자 1칸 = 파렛트 1개 자리(랙 1베이와 동일 기준)라 면적 × 단수 × 유효적재율로 환산한다.
+const BULK_STACK_DEFAULT = 2; // 기본 적재 단수
+const BULK_RATE_DEFAULT = 80; // 기본 유효 적재율(%) — 통로·작업여유 제외
+function bulkStack(el) {
+  return Math.max(1, Math.round(number(el.stack) || BULK_STACK_DEFAULT));
+}
+function bulkRate(el) {
+  const r = el.rate == null ? BULK_RATE_DEFAULT : number(el.rate);
+  return Math.max(0, Math.min(100, r));
+}
+function bulkSlots(el) {
+  if (!el || el.type !== "bulk") return 0;
+  const area = Math.max(0, Math.round(number(el.w))) * Math.max(0, Math.round(number(el.d)));
+  return Math.round((area * bulkStack(el) * bulkRate(el)) / 100);
+}
+// 요소 1개가 제공하는 보관 CAPA (랙 + 평치)
+function elementSlots(el) {
+  return el?.type === "bulk" ? bulkSlots(el) : rackSlots(el);
+}
+// 층 단위 보관 CAPA 집계 — 랙과 평치/벌크를 함께 센다
 function floorRackCapa(center, floor) {
-  const racks = (getRackLayout(center, floor).racks || []).filter((e) => e.type === "rack");
+  const all = getRackLayout(center, floor).racks || [];
+  const racks = all.filter((e) => e.type === "rack");
+  const bulks = all.filter((e) => e.type === "bulk");
   let slots = 0;
   let filled = 0;
   let assigned = 0;
@@ -4059,7 +4217,14 @@ function floorRackCapa(center, floor) {
     filled += Math.round(clamp01(e.fill != null ? e.fill : 0.6) * s);
     assigned += Math.max(0, Math.round(number(e.capa)));
   });
-  return { racks: racks.length, slots, filled, assigned };
+  let bulkTotal = 0;
+  bulks.forEach((e) => {
+    const s = bulkSlots(e);
+    bulkTotal += s;
+    slots += s;
+    filled += Math.round(clamp01(e.fill != null ? e.fill : 0.6) * s);
+  });
+  return { racks: racks.length, bulks: bulks.length, bulkSlots: bulkTotal, slots, filled, assigned };
 }
 
 function isAreaElement(el) {
@@ -4768,6 +4933,16 @@ function centerRackElements(center) {
   });
   return out;
 }
+// 평치/벌크 구역 — 셀코드 맵핑 대상은 아니고 CAPA·점유 집계에만 쓴다
+function centerBulkElements(center) {
+  const out = [];
+  getCenterFloors(center).forEach((floor) => {
+    getRackLayout(center, floor).racks.forEach((el) => {
+      if (el.type === "bulk") out.push({ floor, el });
+    });
+  });
+  return out;
+}
 
 // 재고 ↔ 랙 대조 결과. 셀/접두/랙 세 관점 + KPI·이슈 카운트
 function analyzeInventory(center) {
@@ -4847,6 +5022,27 @@ function analyzeInventory(center) {
     };
   });
 
+  // 평치/벌크 구역도 '랙별 점유' 목록에 함께 보여준다.
+  // 미전산재고의 '위치'가 구역명(또는 화주)과 맞으면 그만큼 점유로 잡는다.
+  const off = offbookList(center);
+  centerBulkElements(center).forEach(({ floor, el }) => {
+    const slots = bulkSlots(el);
+    const label = el.name || (el.customer ? `평치 · ${el.customer}` : "평치/벌크");
+    const matched = off.filter(
+      (o) => o.floor === floor && ((o.area && (o.area === el.name || o.area === el.customer)) || (!o.area && el.customer && o.customer === el.customer)),
+    );
+    const plt = Math.round(matched.reduce((a, o) => a + number(o.plt), 0) * 10) / 10;
+    racks.push({
+      floor, id: el.id, label, prefix: "", bulk: true,
+      len: number(el.w), levels: bulkStack(el), slots,
+      used: Math.min(slots, Math.round(plt)), qty: 0, plt,
+      rate: slots ? Math.round((Math.min(slots, plt) / slots) * 1000) / 10 : 0,
+      customerList: Array.from(new Set(matched.map((o) => o.customer).concat(el.customer ? [el.customer] : []))).filter(Boolean).sort(),
+      status: plt ? "mapped" : "empty",
+      dupe: false,
+    });
+  });
+
   const sum = (arr, f) => arr.reduce((a, x) => a + f(x), 0);
   const unmappedCells = cells.filter((c) => c.status === "unmapped");
   const overflowCells = cells.filter((c) => c.status === "overflow");
@@ -4865,16 +5061,19 @@ function analyzeInventory(center) {
   };
   kpi.rate = kpi.slots ? Math.round((kpi.usedSlots / kpi.slots) * 1000) / 10 : 0;
   kpi.mapRate = kpi.total ? Math.round((kpi.mapped / kpi.total) * 1000) / 10 : 0;
+  const offbook = offbookList(center);
+  kpi.offbookPlt = Math.round(offbookPlt(center) * 10) / 10;
+  kpi.offbookCount = offbook.length;
 
   const issues = {
     unmapped: unmappedCells.length,
     unmappedPrefixes: prefixes.filter((p) => p.status === "unmapped").length,
     overflow: overflowCells.length,
     noprefix: racks.filter((r) => r.status === "noprefix").length,
-    empty: racks.filter((r) => r.status === "empty").length,
+    empty: racks.filter((r) => r.status === "empty" && !r.bulk).length,
     dupe: new Set(racks.filter((r) => r.dupe).map((r) => r.prefix)).size,
   };
-  return { inv, cells, prefixes, racks, kpi, issues };
+  return { inv, cells, prefixes, racks, offbook, kpi, issues };
 }
 
 const INV_STATUS_TEXT = {
@@ -4895,8 +5094,21 @@ function invFilteredRows(data) {
   const cu = $("#invCustomerFilter")?.value || "";
   const fl = $("#invFloorFilter")?.value || "";
   let rows =
-    invTab === "cells" ? data.cells : invTab === "prefixes" ? data.prefixes : data.racks;
+    invTab === "cells"
+      ? data.cells
+      : invTab === "prefixes"
+        ? data.prefixes
+        : invTab === "offbook"
+          ? data.offbook
+          : data.racks;
   rows = rows.filter((r) => {
+    if (invTab === "offbook") {
+      // 미전산은 맵핑 상태 개념이 없어 층·화주·검색만 적용
+      if (cu && r.customer !== cu) return false;
+      if (fl && r.floor !== fl) return false;
+      if (q && !`${r.customer} ${r.area} ${r.reason} ${r.floor}`.toLowerCase().includes(q)) return false;
+      return true;
+    }
     if (st !== "all") {
       if (invTab === "racks") {
         if (st === "mapped" && r.status !== "mapped") return false;
@@ -4955,6 +5167,15 @@ const INV_COLUMNS = {
     { key: "status", label: "맵핑" },
     { key: "assign", label: "랙 배정", noSort: true },
   ],
+  offbook: [
+    { key: "floor", label: "층" },
+    { key: "customer", label: "화주" },
+    { key: "plt", label: "PLT", num: true },
+    { key: "area", label: "위치" },
+    { key: "reason", label: "사유" },
+    { key: "createdAt", label: "등록일" },
+    { key: "del", label: "", noSort: true },
+  ],
   racks: [
     { key: "floor", label: "층" },
     { key: "label", label: "랙" },
@@ -4994,7 +5215,8 @@ function renderInventoryView() {
     { label: "재고 셀", value: invNum(k.total), sub: `화주 ${k.customers}곳` },
     { label: "맵핑됨", value: invNum(k.mapped), sub: `${k.mapRate}%`, tone: k.mapped ? "ok" : "" },
     { label: "미맵핑", value: invNum(k.unmapped + k.overflow), sub: `${invNum(k.unmappedPlt)} PLT`, tone: k.unmapped + k.overflow ? "bad" : "" },
-    { label: "총 재고", value: invNum(k.totalPlt), sub: "PLT" },
+    { label: "총 재고", value: invNum(k.totalPlt), sub: "PLT (gaon)" },
+    { label: "미전산재고", value: invNum(k.offbookPlt), sub: `PLT · ${k.offbookCount}건`, tone: k.offbookPlt ? "warn" : "" },
     { label: "랙 슬롯 점유", value: `${k.rate}%`, sub: `${invNum(k.usedSlots)} / ${invNum(k.slots)}칸` },
   ]
     .map(
@@ -5036,6 +5258,16 @@ function renderInventoryView() {
   flSel.value = floors.includes(flVal) ? flVal : "";
 
   document.querySelectorAll(".inv-tab").forEach((b) => b.classList.toggle("active", b.dataset.invTab === invTab));
+  // 미전산재고 탭에서만 입력줄 노출 + 상태 필터 비활성
+  const isOb = invTab === "offbook";
+  $("#invOffbookAdd").hidden = !isOb;
+  $("#invStatusFilter").disabled = isOb;
+  if (isOb) {
+    const ob = $("#obFloor");
+    const keep = ob.value;
+    ob.innerHTML = floors.map((f) => `<option value="${escapeAttr(f)}">${escapeHtml(f)}</option>`).join("");
+    ob.value = floors.includes(keep) ? keep : floors[0];
+  }
   renderInventoryTable(data);
 }
 
@@ -5081,6 +5313,17 @@ function renderInventoryTable(data) {
           <td>${invBadge(r.status)}</td>
         </tr>`;
       }
+      if (invTab === "offbook") {
+        return `<tr class="offbook-row">
+          <td>${escapeHtml(r.floor)}</td>
+          <td>${escapeHtml(r.customer)}</td>
+          <td class="num">${invNum(r.plt)}</td>
+          <td>${escapeHtml(r.area)}</td>
+          <td class="dim">${escapeHtml(r.reason)}</td>
+          <td class="dim">${escapeHtml((r.createdAt || "").slice(0, 10))}</td>
+          <td><button type="button" class="ghost mini ob-del" data-ob-id="${escapeAttr(r.id)}" title="삭제">✕</button></td>
+        </tr>`;
+      }
       if (invTab === "prefixes") {
         return `<tr class="${r.status}">
           <td class="mono">${escapeHtml(r.prefix)}</td>
@@ -5096,8 +5339,8 @@ function renderInventoryTable(data) {
       return `<tr class="${r.status}" data-rack-id="${escapeAttr(r.id)}" data-floor="${escapeAttr(r.floor)}">
         <td>${escapeHtml(r.floor)}</td>
         <td>${escapeHtml(r.label)}</td>
-        <td><input class="inv-prefix-input mono" data-rack-id="${escapeAttr(r.id)}" data-floor="${escapeAttr(r.floor)}" value="${escapeAttr(r.prefix)}" list="invPrefixList" placeholder="예: 02-01" /></td>
-        <td class="num">${invNum(r.slots)}<em class="dim"> ${r.len}×${r.levels}</em></td>
+        <td>${r.bulk ? `<span class="inv-badge">평치</span>` : `<input class="inv-prefix-input mono" data-rack-id="${escapeAttr(r.id)}" data-floor="${escapeAttr(r.floor)}" value="${escapeAttr(r.prefix)}" list="invPrefixList" placeholder="예: 02-01" />`}</td>
+        <td class="num">${invNum(r.slots)}<em class="dim"> ${r.len}×${r.levels}${r.bulk ? "단" : ""}</em></td>
         <td class="num">${invNum(r.used)}</td>
         <td class="num"><span class="inv-rate"><i style="width:${Math.min(100, r.rate)}%"></i></span>${r.rate}%</td>
         <td class="num">${r.plt}</td>
@@ -5139,7 +5382,7 @@ function invAssignPrefix(rackId, prefix) {
 function invExportCsv() {
   const data = invLastData || analyzeInventory(invActiveCenter());
   const rows = invFilteredRows(data);
-  const cols = INV_COLUMNS[invTab].filter((c) => c.key !== "assign");
+  const cols = INV_COLUMNS[invTab].filter((c) => c.key !== "assign" && c.key !== "del");
   const cell = (r, c) => {
     const v = r[c.key];
     if (c.key === "status") return INV_STATUS_TEXT[v] || v;
@@ -5148,7 +5391,7 @@ function invExportCsv() {
   const csv = [cols.map((c) => c.label).join(",")]
     .concat(rows.map((r) => cols.map((c) => `"${String(cell(r, c)).replace(/"/g, '""')}"`).join(",")))
     .join("\r\n");
-  const tabName = { cells: "셀목록", prefixes: "랙열맵핑", racks: "랙점유" }[invTab];
+  const tabName = { cells: "셀목록", prefixes: "랙열맵핑", racks: "랙점유", offbook: "미전산재고" }[invTab];
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -5203,7 +5446,40 @@ function bindInventoryView() {
     invSort = { key, dir: invSort.key === key ? -invSort.dir : 1 };
     renderInventoryTable(invLastData || analyzeInventory(invActiveCenter()));
   });
+  // 미전산재고 등록 — 실물은 있는데 gaon에 안 올라간 재고
+  $("#obAdd")?.addEventListener("click", () => {
+    const center = invActiveCenter();
+    const customer = ($("#obCustomer").value || "").trim();
+    const plt = Number($("#obPlt").value) || 0;
+    if (!customer || plt <= 0) {
+      alert("화주와 수량(PLT)을 입력하세요.");
+      return;
+    }
+    offbookList(center).push({
+      id: "ob-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      floor: $("#obFloor").value,
+      customer,
+      plt,
+      area: ($("#obArea").value || "").trim(),
+      reason: ($("#obReason").value || "").trim(),
+      createdAt: new Date().toISOString(),
+    });
+    saveState();
+    ["#obCustomer", "#obPlt", "#obArea", "#obReason"].forEach((s) => ($(s).value = ""));
+    renderAll();
+    $("#obCustomer").focus();
+  });
+
   const body = $("#invBody");
+  body.addEventListener("click", (e) => {
+    const del = e.target.closest(".ob-del");
+    if (!del) return;
+    e.stopPropagation();
+    const center = invActiveCenter();
+    state.offbook[center] = offbookList(center).filter((r) => r.id !== del.dataset.obId);
+    saveState();
+    renderAll();
+  });
   body.addEventListener("change", (e) => {
     if (e.target.classList.contains("inv-assign")) {
       const prefix = e.target.dataset.prefix;
@@ -5395,9 +5671,11 @@ function refreshRackList() {
     .map((r) => {
       const meta = isFreeWall(r)
         ? `벽(사선) ${Math.round(wallGeom(r).len * 10) / 10}칸 · ${Math.round(wallGeom(r).deg)}°`
-        : isAreaElement(r)
-          ? `${elementTypeInfo(r.type).label} ${r.w}×${r.d}`
-          : `${r.dir === "v" ? "세로" : "가로"} ${r.len}칸·${r.levels || TWIN_LEVELS}단 · ${rackSlots(r)} PLT`;
+        : r.type === "bulk"
+          ? `평치 ${r.w}×${r.d}칸 · ${bulkStack(r)}단 · ${bulkSlots(r)} PLT`
+          : isAreaElement(r)
+            ? `${elementTypeInfo(r.type).label} ${r.w}×${r.d}`
+            : `${r.dir === "v" ? "세로" : "가로"} ${r.len}칸·${r.levels || TWIN_LEVELS}단 · ${rackSlots(r)} PLT`;
       return `<div class="rack-list-item ${r.id === selectedRackId ? "selected" : ""}" data-rack-id="${r.id}">
           <span class="sw" style="background:${elementColor(r)}"></span>
           <span>${isFreeWall(r) ? r.name || "벽/챔버" : elementLabel(r)}${!isAreaElement(r) && !isFreeWall(r) && r.name ? " · " + r.name : ""}</span>
@@ -5432,13 +5710,24 @@ function renderRackForm() {
   form.hidden = !el;
   if (!el) return;
   const freeWall = isFreeWall(el);
-  const area = isAreaElement(el);
+  const bulk = el.type === "bulk";
+  const area = isAreaElement(el) && !bulk;
   $("#rackFormTitle").textContent = elementTypeInfo(el.type).label + " 속성" + (freeWall ? " (사선)" : "");
-  $("#rackOnlyFields").hidden = area || freeWall;
+  $("#rackOnlyFields").hidden = area || freeWall || bulk;
   $("#areaOnlyFields").hidden = !area;
   $("#wallOnlyFields").hidden = !freeWall;
+  $("#bulkOnlyFields").hidden = !bulk;
   $("#rackName").value = el.name || "";
-  if (freeWall) {
+  if (bulk) {
+    $("#bulkW").value = el.w;
+    $("#bulkD").value = el.d;
+    $("#bulkStack").value = bulkStack(el);
+    $("#bulkRate").value = bulkRate(el);
+    $("#bulkCustomer").value = el.customer || "";
+    $("#bulkColor").value = el.color || elementTypeInfo("bulk").color;
+    const area2 = Math.max(0, Math.round(number(el.w))) * Math.max(0, Math.round(number(el.d)));
+    $("#bulkSlotsVal").textContent = `${bulkSlots(el).toLocaleString("ko-KR")} PLT (${area2}칸 × ${bulkStack(el)}단 × ${bulkRate(el)}%)`;
+  } else if (freeWall) {
     const g = wallGeom(el);
     $("#wallDeg").value = Math.round(g.deg * 10) / 10;
     $("#wallLen").value = Math.round(g.len * 10) / 10;
@@ -5615,10 +5904,15 @@ function endRackDraw(event) {
       row: a.row,
       w: a.w,
       d: a.d,
-      name: info.label,
+      name: twinElementType === "bulk" ? "" : info.label,
       color: info.color,
       height: twinElementType === "office" ? 2 : 1,
     };
+    if (twinElementType === "bulk") {
+      el.stack = BULK_STACK_DEFAULT;
+      el.rate = BULK_RATE_DEFAULT;
+      el.customer = "";
+    }
   } else {
     const r = rackDragRect(rackDrag.start, cur);
     el = {
@@ -5845,6 +6139,26 @@ function bindRackEditor() {
     updateSelectedRack({ height: Math.max(1, Math.min(6, Number(e.target.value) || 1)) }),
   );
   $("#wallColor")?.addEventListener("input", (e) => updateSelectedRack({ color: e.target.value }));
+  // 평치/벌크 — 면적·단수·유효적재율을 바꾸면 보관 CAPA가 바로 다시 계산된다
+  const bulkPatch = (patch) => {
+    updateSelectedRack(patch);
+    renderRackForm();
+    renderAll();
+  };
+  $("#bulkW")?.addEventListener("change", (e) =>
+    bulkPatch({ w: Math.max(1, Math.min(FLOORPLAN_COLS, Number(e.target.value) || 1)) }),
+  );
+  $("#bulkD")?.addEventListener("change", (e) =>
+    bulkPatch({ d: Math.max(1, Math.min(FLOORPLAN_ROWS, Number(e.target.value) || 1)) }),
+  );
+  $("#bulkStack")?.addEventListener("change", (e) =>
+    bulkPatch({ stack: Math.max(1, Math.min(10, Number(e.target.value) || BULK_STACK_DEFAULT)) }),
+  );
+  $("#bulkRate")?.addEventListener("change", (e) =>
+    bulkPatch({ rate: Math.max(0, Math.min(100, Number(e.target.value))) }),
+  );
+  $("#bulkCustomer")?.addEventListener("change", (e) => bulkPatch({ customer: e.target.value.trim() }));
+  $("#bulkColor")?.addEventListener("input", (e) => updateSelectedRack({ color: e.target.value }));
   $("#rackDelete")?.addEventListener("click", deleteSelectedRack);
   $("#rackClearAll")?.addEventListener("click", clearAllRacks);
   $("#layoutUndoBackup")?.addEventListener("click", restoreLayoutBackup);
