@@ -2542,6 +2542,14 @@ label textarea {
 .twin-panel:fullscreen .rack-editor, .twin-panel.fs .rack-editor { margin-top: 8px; }
 .twin-panel:fullscreen .rack-editor-bar, .twin-panel.fs .rack-editor-bar { margin-bottom: 6px; }
 .twin-panel:fullscreen .rack-editor-hint, .twin-panel.fs .rack-editor-hint { display: none; }
+/* 랙 기준 CAPA 표시 */
+.twin-kpi.rackcapa strong { color: #7dd3fc; }
+.rack-capa-summary { margin: 6px 0 10px; padding: 8px 10px; border-radius: 9px; background: #131c2b;
+  border: 1px solid rgba(120,160,210,.18); font-size: 12px; color: #9fb2cc; }
+.rack-capa-summary strong { color: #7dd3fc; font-size: 14px; }
+.rack-capa-summary span { display: block; margin-top: 2px; font-size: 11px; color: #6b7688; }
+.rack-slots-row { margin: 6px 0; font-size: 12px; color: #9fb2cc; }
+.rack-slots-row strong { color: #7dd3fc; }
 .bg-adjust-body { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .bg-adjust-body[hidden] { display: none; }
 .bg-fold.open { background: #24354c; color: #cdd8e8; }

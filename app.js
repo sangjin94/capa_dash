@@ -39,34 +39,34 @@ const DEFAULT_FLOORPLANS = {
 };
 // floorplanKey → 기본 랙 배치(도면에서 1차 추출). 사용자가 편집하면 그 값이 우선.
 // 기본 랙/기둥/벽 배치 버전 — 올리면 기존 브라우저도 새 배치로 재시드됨
-const DEFAULT_RACKS_VERSION = 11;
+const DEFAULT_RACKS_VERSION = 12;
 // 남이천1센터 구조 기둥 — 같은 건물이라 전 층 공통(도면의 노란 마커에서 검출)
 const NAMI1_COLUMNS = [
-  {type:"column",col:165,row:21,w:2,d:2}, {type:"column",col:166,row:22,w:2,d:2}, {type:"column",col:168,row:21,w:2,d:2}, {type:"column",col:172,row:22,w:2,d:2},
-  {type:"column",col:121,row:23,w:2,d:2}, {type:"column",col:16,row:37,w:2,d:2}, {type:"column",col:27,row:37,w:2,d:2}, {type:"column",col:39,row:37,w:2,d:2},
-  {type:"column",col:61,row:37,w:2,d:2}, {type:"column",col:72,row:37,w:2,d:2}, {type:"column",col:94,row:37,w:2,d:2}, {type:"column",col:106,row:37,w:2,d:2},
-  {type:"column",col:128,row:37,w:2,d:2}, {type:"column",col:139,row:37,w:2,d:2}, {type:"column",col:150,row:37,w:2,d:2}, {type:"column",col:40,row:45,w:2,d:2},
-  {type:"column",col:48,row:45,w:2,d:2}, {type:"column",col:16,row:48,w:2,d:2}, {type:"column",col:27,row:48,w:2,d:2}, {type:"column",col:39,row:48,w:2,d:2},
-  {type:"column",col:61,row:48,w:2,d:2}, {type:"column",col:72,row:48,w:2,d:2}, {type:"column",col:94,row:48,w:2,d:2}, {type:"column",col:106,row:48,w:2,d:2},
-  {type:"column",col:117,row:48,w:2,d:2}, {type:"column",col:128,row:48,w:2,d:2}, {type:"column",col:139,row:48,w:2,d:2}, {type:"column",col:150,row:48,w:2,d:2},
-  {type:"column",col:161,row:48,w:2,d:2}, {type:"column",col:173,row:48,w:2,d:2}, {type:"column",col:184,row:48,w:2,d:2}, {type:"column",col:94,row:59,w:2,d:2},
-  {type:"column",col:106,row:59,w:2,d:2}, {type:"column",col:117,row:59,w:2,d:2}, {type:"column",col:128,row:59,w:2,d:2}, {type:"column",col:139,row:59,w:2,d:2},
-  {type:"column",col:150,row:59,w:2,d:2}, {type:"column",col:161,row:59,w:2,d:2}, {type:"column",col:173,row:59,w:2,d:2}, {type:"column",col:184,row:59,w:2,d:2},
-  {type:"column",col:16,row:59,w:2,d:2}, {type:"column",col:27,row:59,w:2,d:2}, {type:"column",col:61,row:59,w:2,d:2}, {type:"column",col:72,row:59,w:2,d:2},
-  {type:"column",col:40,row:68,w:2,d:2}, {type:"column",col:48,row:68,w:2,d:2}, {type:"column",col:51,row:70,w:2,d:2}, {type:"column",col:16,row:71,w:2,d:2},
-  {type:"column",col:27,row:71,w:2,d:2}, {type:"column",col:39,row:71,w:2,d:2}, {type:"column",col:61,row:71,w:2,d:2}, {type:"column",col:94,row:71,w:2,d:2},
-  {type:"column",col:128,row:71,w:2,d:2}, {type:"column",col:139,row:71,w:2,d:2}, {type:"column",col:150,row:71,w:2,d:2}, {type:"column",col:161,row:71,w:2,d:2},
-  {type:"column",col:173,row:71,w:2,d:2}, {type:"column",col:184,row:71,w:2,d:2}, {type:"column",col:16,row:82,w:2,d:2}, {type:"column",col:27,row:82,w:2,d:2},
-  {type:"column",col:39,row:82,w:2,d:2}, {type:"column",col:50,row:82,w:2,d:2}, {type:"column",col:61,row:82,w:2,d:2}, {type:"column",col:72,row:82,w:2,d:2},
-  {type:"column",col:106,row:82,w:2,d:2}, {type:"column",col:128,row:82,w:2,d:2}, {type:"column",col:139,row:82,w:2,d:2}, {type:"column",col:161,row:82,w:2,d:2},
-  {type:"column",col:173,row:82,w:2,d:2}, {type:"column",col:184,row:82,w:2,d:2}, {type:"column",col:94,row:93,w:2,d:2}, {type:"column",col:106,row:93,w:2,d:2},
-  {type:"column",col:128,row:93,w:2,d:2}, {type:"column",col:139,row:93,w:2,d:2}, {type:"column",col:161,row:93,w:2,d:2}, {type:"column",col:173,row:93,w:2,d:2},
-  {type:"column",col:16,row:93,w:2,d:2}, {type:"column",col:27,row:93,w:2,d:2}, {type:"column",col:39,row:93,w:2,d:2}, {type:"column",col:50,row:93,w:2,d:2},
-  {type:"column",col:61,row:93,w:2,d:2}, {type:"column",col:72,row:93,w:2,d:2}, {type:"column",col:40,row:99,w:2,d:2}, {type:"column",col:39,row:104,w:2,d:2},
-  {type:"column",col:50,row:104,w:2,d:2}, {type:"column",col:72,row:104,w:2,d:2}, {type:"column",col:94,row:104,w:2,d:2}, {type:"column",col:106,row:104,w:2,d:2},
-  {type:"column",col:117,row:104,w:2,d:2}, {type:"column",col:128,row:104,w:2,d:2}, {type:"column",col:139,row:104,w:2,d:2}, {type:"column",col:16,row:104,w:2,d:2},
-  {type:"column",col:27,row:104,w:2,d:2}, {type:"column",col:61,row:104,w:2,d:2}, {type:"column",col:55,row:106,w:2,d:2}, {type:"column",col:139,row:114,w:2,d:2},
-  {type:"column",col:117,row:115,w:2,d:2}, {type:"column",col:128,row:115,w:2,d:2},
+  {type:"column",col:166,row:22,w:1,d:1}, {type:"column",col:167,row:22,w:1,d:1}, {type:"column",col:169,row:22,w:1,d:1}, {type:"column",col:172,row:22,w:1,d:1},
+  {type:"column",col:121,row:24,w:1,d:1}, {type:"column",col:17,row:38,w:1,d:1}, {type:"column",col:28,row:38,w:1,d:1}, {type:"column",col:39,row:38,w:1,d:1},
+  {type:"column",col:61,row:38,w:1,d:1}, {type:"column",col:73,row:38,w:1,d:1}, {type:"column",col:95,row:38,w:1,d:1}, {type:"column",col:106,row:38,w:1,d:1},
+  {type:"column",col:128,row:38,w:1,d:1}, {type:"column",col:140,row:38,w:1,d:1}, {type:"column",col:151,row:38,w:1,d:1}, {type:"column",col:41,row:45,w:1,d:1},
+  {type:"column",col:49,row:45,w:1,d:1}, {type:"column",col:17,row:49,w:1,d:1}, {type:"column",col:28,row:49,w:1,d:1}, {type:"column",col:39,row:49,w:1,d:1},
+  {type:"column",col:61,row:49,w:1,d:1}, {type:"column",col:73,row:49,w:1,d:1}, {type:"column",col:95,row:49,w:1,d:1}, {type:"column",col:106,row:49,w:1,d:1},
+  {type:"column",col:117,row:49,w:1,d:1}, {type:"column",col:128,row:49,w:1,d:1}, {type:"column",col:140,row:49,w:1,d:1}, {type:"column",col:151,row:49,w:1,d:1},
+  {type:"column",col:162,row:49,w:1,d:1}, {type:"column",col:173,row:49,w:1,d:1}, {type:"column",col:184,row:49,w:1,d:1}, {type:"column",col:95,row:60,w:1,d:1},
+  {type:"column",col:106,row:60,w:1,d:1}, {type:"column",col:117,row:60,w:1,d:1}, {type:"column",col:128,row:60,w:1,d:1}, {type:"column",col:140,row:60,w:1,d:1},
+  {type:"column",col:151,row:60,w:1,d:1}, {type:"column",col:162,row:60,w:1,d:1}, {type:"column",col:173,row:60,w:1,d:1}, {type:"column",col:184,row:60,w:1,d:1},
+  {type:"column",col:17,row:60,w:1,d:1}, {type:"column",col:28,row:60,w:1,d:1}, {type:"column",col:61,row:60,w:1,d:1}, {type:"column",col:73,row:60,w:1,d:1},
+  {type:"column",col:41,row:68,w:1,d:1}, {type:"column",col:49,row:68,w:1,d:1}, {type:"column",col:51,row:71,w:1,d:1}, {type:"column",col:17,row:71,w:1,d:1},
+  {type:"column",col:28,row:71,w:1,d:1}, {type:"column",col:39,row:71,w:1,d:1}, {type:"column",col:61,row:71,w:1,d:1}, {type:"column",col:95,row:71,w:1,d:1},
+  {type:"column",col:128,row:71,w:1,d:1}, {type:"column",col:140,row:71,w:1,d:1}, {type:"column",col:151,row:71,w:1,d:1}, {type:"column",col:162,row:71,w:1,d:1},
+  {type:"column",col:173,row:71,w:1,d:1}, {type:"column",col:184,row:71,w:1,d:1}, {type:"column",col:17,row:82,w:1,d:1}, {type:"column",col:28,row:82,w:1,d:1},
+  {type:"column",col:39,row:82,w:1,d:1}, {type:"column",col:50,row:82,w:1,d:1}, {type:"column",col:61,row:82,w:1,d:1}, {type:"column",col:73,row:82,w:1,d:1},
+  {type:"column",col:106,row:82,w:1,d:1}, {type:"column",col:128,row:82,w:1,d:1}, {type:"column",col:140,row:82,w:1,d:1}, {type:"column",col:162,row:82,w:1,d:1},
+  {type:"column",col:173,row:82,w:1,d:1}, {type:"column",col:184,row:82,w:1,d:1}, {type:"column",col:95,row:93,w:1,d:1}, {type:"column",col:106,row:93,w:1,d:1},
+  {type:"column",col:128,row:93,w:1,d:1}, {type:"column",col:140,row:93,w:1,d:1}, {type:"column",col:162,row:93,w:1,d:1}, {type:"column",col:173,row:93,w:1,d:1},
+  {type:"column",col:17,row:93,w:1,d:1}, {type:"column",col:28,row:93,w:1,d:1}, {type:"column",col:39,row:93,w:1,d:1}, {type:"column",col:50,row:93,w:1,d:1},
+  {type:"column",col:61,row:93,w:1,d:1}, {type:"column",col:73,row:93,w:1,d:1}, {type:"column",col:41,row:99,w:1,d:1}, {type:"column",col:39,row:105,w:1,d:1},
+  {type:"column",col:50,row:105,w:1,d:1}, {type:"column",col:73,row:105,w:1,d:1}, {type:"column",col:95,row:105,w:1,d:1}, {type:"column",col:106,row:105,w:1,d:1},
+  {type:"column",col:117,row:105,w:1,d:1}, {type:"column",col:128,row:105,w:1,d:1}, {type:"column",col:140,row:105,w:1,d:1}, {type:"column",col:17,row:105,w:1,d:1},
+  {type:"column",col:28,row:105,w:1,d:1}, {type:"column",col:61,row:105,w:1,d:1}, {type:"column",col:56,row:106,w:1,d:1}, {type:"column",col:140,row:115,w:1,d:1},
+  {type:"column",col:117,row:116,w:1,d:1}, {type:"column",col:128,row:116,w:1,d:1},
 ];
 const DEFAULT_RACK_LAYOUTS = {
   // 남이천1센터 지하1층 — 도면 픽셀에서 216x126 객자로 진통 산정
@@ -2965,6 +2965,12 @@ function render3DTwin() {
   $("#twinUsed").textContent = number(totals.used).toLocaleString("ko-KR");
   $("#twinFree").textContent = free.toLocaleString("ko-KR");
   $("#twinRate").textContent = percent(totals.used, totals.capacity) + "%";
+  const rc = floorRackCapa(center, floor);
+  const rcEl = $("#twinRackCapa");
+  if (rcEl) {
+    rcEl.textContent = rc.slots.toLocaleString("ko-KR");
+    rcEl.title = `랙 ${rc.racks}개 · 적재(추정) ${rc.filled.toLocaleString("ko-KR")} PLT`;
+  }
 
   $("#twinLegend").innerHTML = [
     ...Array.from(byCustomer.entries()).map(
@@ -3688,6 +3694,28 @@ function setTwinViewMode(mode) {
   else render3DTwin();
 }
 
+// 랙 보관 CAPA — 1칸(베이) × 1단 = 1 PLT
+function rackSlots(el) {
+  if (!el || el.type !== "rack") return 0;
+  const len = Math.max(0, Math.round(number(el.len)));
+  const levels = Math.max(1, Math.round(number(el.levels) || TWIN_LEVELS));
+  return len * levels;
+}
+// 층 단위 랙 기준 CAPA 집계
+function floorRackCapa(center, floor) {
+  const racks = (getRackLayout(center, floor).racks || []).filter((e) => e.type === "rack");
+  let slots = 0;
+  let filled = 0;
+  let assigned = 0;
+  racks.forEach((e) => {
+    const s = rackSlots(e);
+    slots += s;
+    filled += Math.round(clamp01(e.fill != null ? e.fill : 0.6) * s);
+    assigned += Math.max(0, Math.round(number(e.capa)));
+  });
+  return { racks: racks.length, slots, filled, assigned };
+}
+
 function isAreaElement(el) {
   return elementTypeInfo(el.type).shape === "area";
 }
@@ -3944,6 +3972,12 @@ function nudgeSelectedElement(dCol, dRow) {
 
 function refreshRackList() {
   const list = $("#rackList");
+  const sum = $("#rackCapaSummary");
+  if (sum) {
+    const rc = floorRackCapa(twinActiveCenter(), twinActiveFloor());
+    sum.innerHTML = `보관 CAPA <strong>${rc.slots.toLocaleString("ko-KR")} PLT</strong>
+      <span>랙 ${rc.racks}개 · 적재(추정) ${rc.filled.toLocaleString("ko-KR")} PLT</span>`;
+  }
   if (!list) return;
   const racks = getRackLayout(twinActiveCenter(), twinActiveFloor()).racks;
   if (!racks.length) {
@@ -3954,7 +3988,7 @@ function refreshRackList() {
     .map((r) => {
       const meta = isAreaElement(r)
         ? `${elementTypeInfo(r.type).label} ${r.w}×${r.d}`
-        : `${r.dir === "v" ? "세로" : "가로"} ${r.len}칸·${r.levels || TWIN_LEVELS}단`;
+        : `${r.dir === "v" ? "세로" : "가로"} ${r.len}칸·${r.levels || TWIN_LEVELS}단 · ${rackSlots(r)} PLT`;
       return `<div class="rack-list-item ${r.id === selectedRackId ? "selected" : ""}" data-rack-id="${r.id}">
           <span class="sw" style="background:${elementColor(r)}"></span>
           <span>${elementLabel(r)}${!isAreaElement(r) && r.name ? " · " + r.name : ""}</span>
@@ -4003,6 +4037,13 @@ function renderRackForm() {
     $("#rackLen").value = el.len;
     $("#rackDir").value = el.dir === "v" ? "v" : "h";
     $("#rackCapa").value = el.capa || 0;
+    // 보관 CAPA = 베이 × 단 (1칸·1단 = 1 PLT)
+    const slotsEl = $("#rackSlots");
+    if (slotsEl) {
+      const s = rackSlots(el);
+      const lv = el.levels || TWIN_LEVELS;
+      slotsEl.textContent = `${s.toLocaleString("ko-KR")} PLT (${el.len}칸 × ${lv}단)`;
+    }
     const fillPct = Math.round((el.fill != null ? el.fill : 0.6) * 100);
     $("#rackFill").value = fillPct;
     $("#rackFillVal").textContent = fillPct + "%";

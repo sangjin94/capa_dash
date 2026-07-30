@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=16" />
+    <link rel="stylesheet" href="./styles.css?v=17" />
   </head>
   <body>
     <div class="app-shell">
@@ -299,6 +299,7 @@
                 <div class="twin-kpi use"><span>사용 CAPA</span><strong id="twinUsed">–</strong></div>
                 <div class="twin-kpi free"><span>여유 CAPA</span><strong id="twinFree">–</strong></div>
                 <div class="twin-kpi"><span>점유율</span><strong id="twinRate">–</strong></div>
+                <div class="twin-kpi rackcapa" title="랙 1칸(베이) × 1단 = 1 PLT 기준으로 도면 배치에서 계산한 보관 CAPA"><span>랙 기준 CAPA</span><strong id="twinRackCapa">–</strong></div>
               </div>
               <div class="twin-hud twin-legend" id="twinLegend"></div>
               <div class="twin-tooltip" id="twinTooltip"></div>
@@ -355,6 +356,7 @@
                   <strong>배치된 랙</strong>
                   <button class="ghost" id="rackClearAll" type="button">전체 삭제</button>
                 </div>
+                <div class="rack-capa-summary" id="rackCapaSummary" title="랙 1칸(베이) × 1단 = 1 PLT"></div>
                 <div class="rack-list" id="rackList"></div>
                 <div class="rack-form" id="rackForm" hidden>
                   <h4 id="rackFormTitle">요소 속성</h4>
@@ -389,6 +391,7 @@
                         <input id="rackCapa" type="number" min="0" step="1" />
                       </label>
                     </div>
+                    <div class="rack-slots-row">보관 CAPA <strong id="rackSlots">–</strong></div>
                     <label>적재율 <span id="rackFillVal">60%</span>
                       <input id="rackFill" type="range" min="0" max="100" step="5" />
                     </label>
@@ -535,6 +538,6 @@
     <script src="./assets/vendor/OrbitControls.js"></script>
     <script src="./assets/vendor/xlsx.full.min.js"></script>
     <script src="./assets/vendor/pdf.min.js"></script>
-    <script src="./app.js?v=16"></script>
+    <script src="./app.js?v=17"></script>
   </body>
 </html>
