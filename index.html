@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=28" />
+    <link rel="stylesheet" href="./styles.css?v=31" />
   </head>
   <body>
     <div class="app-shell">
@@ -24,6 +24,7 @@
           <button class="nav-item" data-view="shipper">화주사 분석</button>
           <button class="nav-item" data-view="centers">마스터 관리</button>
           <button class="nav-item" data-view="mapView">3D 점유도</button>
+          <button class="nav-item" data-view="inventory">재고 관리</button>
           <button class="nav-item" data-view="manual">매뉴얼</button>
         </nav>
 
@@ -432,7 +433,7 @@
                 <strong>재고 · 파일</strong>
                 <div class="twin-photo-uploads">
                   <button type="button" id="gaonFetch" class="file-button small gaon-btn" title="등록된 화주 전체의 셀별 재고를 gaon에서 불러와 갱신합니다">🔄 gaon 재고 전체 갱신</button>
-                  <button type="button" id="gaonShippers" class="file-button small" title="조회할 화주 목록을 등록합니다">👥 화주 관리</button>
+                  <button type="button" id="gaonShippers" class="file-button small" title="gaon 로그인 · 창고코드 · 화주 목록을 한 화면에서 관리합니다">⚙ gaon 연동 설정</button>
                   <span class="save-status" id="inventoryStatus">재고 미연동</span>
                   <button type="button" id="photoPanelToggle" class="ghost mini bg-fold" aria-expanded="false" title="사진·도면 업로드와 미리보기 펼치기/접기">사진·도면 ▾</button>
                 </div>
@@ -461,6 +462,65 @@
                     <em>PDF 도면 <span id="twinPlanFloor"></span></em>
                   </button>
                 </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="inventory">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>재고 관리 · 도면 맵핑 점검</h2>
+                <p class="panel-copy">gaon에서 불러온 셀별 재고를 도면의 랙과 대조합니다. 어떤 셀이 랙에 연결되지 않았는지, 어떤 랙이 비어 있는지 확인하고 바로 배정할 수 있습니다.</p>
+              </div>
+              <div class="inv-tools">
+                <label>센터
+                  <select id="invCenterSelect"></select>
+                </label>
+                <button class="ghost" id="invRefresh" type="button" title="gaon 연동 설정 열기">⚙ gaon 연동</button>
+                <button class="ghost" id="invExport" type="button" title="현재 탭 목록을 CSV로 내려받습니다">CSV 내보내기</button>
+                <span class="save-status" id="invSnapshot">재고 미연동</span>
+              </div>
+            </div>
+
+            <div class="inv-kpis" id="invKpis"></div>
+            <div class="inv-issues" id="invIssues"></div>
+
+            <div class="inv-tabs" role="tablist">
+              <button class="inv-tab active" data-inv-tab="cells" type="button">셀 목록</button>
+              <button class="inv-tab" data-inv-tab="prefixes" type="button">랙열(접두)별 맵핑</button>
+              <button class="inv-tab" data-inv-tab="racks" type="button">랙별 점유</button>
+            </div>
+
+            <div class="inv-filters" id="invFilters">
+              <label class="inv-search">
+                <input id="invSearch" type="search" placeholder="셀코드 · 화주 · 품목 검색" autocomplete="off" />
+              </label>
+              <label>상태
+                <select id="invStatusFilter">
+                  <option value="all">전체</option>
+                  <option value="mapped">맵핑됨</option>
+                  <option value="unmapped">미맵핑</option>
+                  <option value="overflow">범위 초과</option>
+                </select>
+              </label>
+              <label>화주
+                <select id="invCustomerFilter"><option value="">전체</option></select>
+              </label>
+              <label>층
+                <select id="invFloorFilter"><option value="">전체</option></select>
+              </label>
+              <span class="inv-result-count" id="invResultCount"></span>
+            </div>
+
+            <div class="inv-table-wrap">
+              <table class="inv-table" id="invTable">
+                <thead id="invHead"></thead>
+                <tbody id="invBody"></tbody>
+              </table>
+            </div>
+            <div class="inv-more">
+              <button class="ghost" id="invMore" type="button" hidden>더 보기</button>
             </div>
           </section>
         </section>
@@ -546,6 +606,94 @@
       </section>
     </div>
 
+    <div class="modal" id="gaonModal" aria-hidden="true">
+      <div class="modal-backdrop" id="gaonBackdrop"></div>
+      <section class="modal-panel gaon-panel" role="dialog" aria-modal="true" aria-labelledby="gaonTitle">
+        <div class="modal-head">
+          <div>
+            <span>WMS 연동</span>
+            <h2 id="gaonTitle">gaon 재고 연동</h2>
+          </div>
+          <div class="actions">
+            <button class="primary" id="gaonRun" type="button">재고 불러오기</button>
+            <button class="ghost" id="gaonClose" type="button">닫기</button>
+          </div>
+        </div>
+
+        <div class="gaon-body">
+          <section class="gaon-block">
+            <header>
+              <h3>1. gaon 접속</h3>
+              <span class="gaon-conn" id="gaonConn">확인 중…</span>
+            </header>
+            <div class="gaon-login" id="gaonLoginForm">
+              <label>사번
+                <input id="gaonId" type="text" autocomplete="username" placeholder="예: 20190001" />
+              </label>
+              <label>비밀번호
+                <input id="gaonPw" type="password" autocomplete="current-password" placeholder="gaon 비밀번호" />
+              </label>
+              <button class="primary small" id="gaonLoginBtn" type="button">로그인</button>
+            </div>
+            <div class="gaon-logged" id="gaonLoggedRow" hidden>
+              <span id="gaonLoggedText">로그인됨</span>
+              <button class="ghost small" id="gaonLogoutBtn" type="button">로그아웃</button>
+            </div>
+            <p class="hint">비밀번호는 저장하지 않습니다. 로컬 중계 서버(<code>py server\serve.py</code>) 메모리에만 유지됩니다.</p>
+          </section>
+
+          <section class="gaon-block">
+            <header><h3>2. 조회 조건</h3></header>
+            <div class="gaon-row">
+              <label>센터
+                <input id="gaonCenterName" type="text" readonly />
+              </label>
+              <label>WMS 창고코드
+                <input id="gaonWarehouse" type="text" placeholder="예: 0000200" />
+              </label>
+              <label>기준일자
+                <input id="gaonDate" type="date" />
+              </label>
+            </div>
+          </section>
+
+          <section class="gaon-block">
+            <header>
+              <h3>3. 화주 목록</h3>
+              <div class="actions">
+                <span class="gaon-count" id="gaonShipperCount"></span>
+                <button class="ghost small" id="gaonSelectAll" type="button">전체 선택</button>
+                <button class="ghost small" id="gaonSelectNone" type="button">전체 해제</button>
+                <button class="ghost small" id="gaonBulk" type="button">일괄 붙여넣기</button>
+              </div>
+            </header>
+            <div class="gaon-shipper-head">
+              <span></span><span>화주코드</span><span>화주명</span><span>결과</span><span></span>
+            </div>
+            <div class="gaon-shippers" id="gaonShipperList"></div>
+            <div class="gaon-add">
+              <input id="gaonNewCode" type="text" placeholder="화주코드 (예: 2155)" />
+              <input id="gaonNewName" type="text" placeholder="화주명" />
+              <button class="ghost small" id="gaonAddShipper" type="button">+ 추가</button>
+            </div>
+            <div class="gaon-bulk" id="gaonBulkBox" hidden>
+              <textarea id="gaonBulkText" rows="5" placeholder="한 줄에 하나씩:&#10;2151,바이오포트코리아&#10;2155,윌리엄그랜트앤선즈"></textarea>
+              <div class="actions">
+                <button class="primary small" id="gaonBulkApply" type="button">추가</button>
+                <button class="ghost small" id="gaonBulkCancel" type="button">취소</button>
+              </div>
+            </div>
+          </section>
+
+          <div class="gaon-progress" id="gaonProgress" hidden>
+            <div class="gaon-bar"><i id="gaonBar"></i></div>
+            <span id="gaonProgressText"></span>
+          </div>
+          <p class="gaon-msg" id="gaonMsg" hidden></p>
+        </div>
+      </section>
+    </div>
+
     <script src="./assets/vendor/three.min.js"></script>
     <script src="./assets/vendor/OrbitControls.js"></script>
     <script src="./assets/vendor/xlsx.full.min.js"></script>
@@ -555,6 +703,6 @@
       <figcaption id="imgModalCaption"></figcaption>
       <img id="imgModalImg" alt="" />
     </div>
-    <script src="./app.js?v=28"></script>
+    <script src="./app.js?v=33"></script>
   </body>
 </html>

@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "capa_dash",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5177"],
-      "port": 5177
+      "runtimeExecutable": "py",
+      "runtimeArgs": ["server/serve.py"],
+      "port": 5180
     }
   ]
 }
