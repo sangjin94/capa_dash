@@ -39,7 +39,7 @@ const DEFAULT_FLOORPLANS = {
 };
 // floorplanKey → 기본 랙 배치(도면에서 1차 추출). 사용자가 편집하면 그 값이 우선.
 // 기본 랙/기둥/벽 배치 버전 — 올리면 기존 브라우저도 새 배치로 재시드됨
-const DEFAULT_RACKS_VERSION = 13;
+const DEFAULT_RACKS_VERSION = 14;
 // 남이천1센터 구조 기둥 — 같은 건물이라 전 층 공통(도면의 노란 마커에서 검출)
 const NAMI1_COLUMNS = [
   {type:"column",col:166,row:22,w:1,d:1}, {type:"column",col:167,row:22,w:1,d:1}, {type:"column",col:169,row:22,w:1,d:1}, {type:"column",col:172,row:22,w:1,d:1},
@@ -403,6 +403,8 @@ function ensureBaselineState() {
   // 기본 랙/기둥/벽 배치 — 버전이 바뀌면 기본 배치 키를 새로 시드(좌표·도면 갱신 반영)
   if (state.defaultRacksVersion !== DEFAULT_RACKS_VERSION) {
     Object.entries(DEFAULT_RACK_LAYOUTS).forEach(([key, els]) => {
+      // 사용자가 편집한 층은 보존 — 기본값 갱신으로 작업 내용이 사라지지 않도록
+      if (state.rackLayouts[key]?.userEdited) return;
       state.rackLayouts[key] = { racks: els.map(materializeDefaultRack) };
     });
     state.defaultRacksVersion = DEFAULT_RACKS_VERSION;
@@ -3098,6 +3100,8 @@ function ensureTwinScene(container) {
     if (!twinState) return;
     const active = document.getElementById("mapView")?.classList.contains("active");
     if (!active) return;
+    // 랙 배치 편집 중에는 3D 렌더 중지 — 편집 조작이 끊기지 않도록 CPU/GPU 확보
+    if (twinViewMode === "edit") return;
     twinState.controls.update();
     twinState.renderer.render(twinState.scene, twinState.camera);
   })();
@@ -3694,6 +3698,12 @@ function setTwinViewMode(mode) {
   else render3DTwin();
 }
 
+// 사용자가 직접 편집한 층 표시 — 기본 배치 버전이 올라가도 덮어쓰지 않도록 보호
+function markLayoutEdited(center, floor) {
+  const layout = getRackLayout(center, floor);
+  if (!layout.userEdited) layout.userEdited = true;
+}
+
 // 랙 보관 CAPA — 1칸(베이) × 1단 = 1 PLT
 function rackSlots(el) {
   if (!el || el.type !== "rack") return 0;
@@ -3900,13 +3910,21 @@ function refreshRackLayer() {
         `<div class="rack-item ${isAreaElement(r) ? "area" : ""} ${r.id === selectedRackId ? "selected" : ""}" data-rack-id="${r.id}" style="${elementStyle(r)}"><span>${elementLabel(r)}</span></div>`,
     )
     .join("");
-  layer.querySelectorAll(".rack-item").forEach((el) => {
-    el.addEventListener("click", (e) => {
+  // 이벤트 위임 — 요소가 수백 개여도 리스너는 레이어 1개만 (재렌더 비용 절감)
+  if (!layer.dataset.bound) {
+    layer.dataset.bound = "1";
+    layer.addEventListener("click", (e) => {
+      const item = e.target.closest(".rack-item");
+      if (!item) return;
       e.stopPropagation();
-      selectRack(el.dataset.rackId);
+      selectRack(item.dataset.rackId);
     });
-    el.addEventListener("pointerdown", (e) => startElementMove(e, el.dataset.rackId));
-  });
+    layer.addEventListener("pointerdown", (e) => {
+      const item = e.target.closest(".rack-item");
+      if (!item) return;
+      startElementMove(e, item.dataset.rackId);
+    });
+  }
 }
 
 // 배치된 요소를 드래그로 이동 (격자 단위 스냅)
@@ -3928,27 +3946,41 @@ function startElementMove(event, id) {
   } catch {
     /* 캡처 실패 무시 */
   }
+  let raf = 0;
   const onMove = (e) => {
     if (!elementMove) return;
-    const cur = cellFromPointer(grid, e);
-    const dCol = cur.col - elementMove.start.col;
-    const dRow = cur.row - elementMove.start.row;
-    if (!dCol && !dRow && !elementMove.moved) return;
-    const target = getRackLayout(twinActiveCenter(), twinActiveFloor()).racks.find((r) => r.id === elementMove.id);
-    if (!target) return;
-    const area = isAreaElement(target);
-    const w = area ? target.w : target.dir === "h" ? target.len : 1;
-    const h = area ? target.d : target.dir === "v" ? target.len : 1;
-    target.col = Math.max(0, Math.min(FLOORPLAN_COLS - w, elementMove.col0 + dCol));
-    target.row = Math.max(0, Math.min(FLOORPLAN_ROWS - h, elementMove.row0 + dRow));
-    elementMove.moved = true;
-    refreshRackLayer();
-    renderRackForm();
+    elementMove.ev = e;
+    if (raf) return; // 프레임당 1회만 처리 — 드래그가 무거워지지 않도록
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      if (!elementMove) return;
+      const cur = cellFromPointer(grid, elementMove.ev);
+      const dCol = cur.col - elementMove.start.col;
+      const dRow = cur.row - elementMove.start.row;
+      if (!dCol && !dRow && !elementMove.moved) return;
+      const target = getRackLayout(twinActiveCenter(), twinActiveFloor()).racks.find((r) => r.id === elementMove.id);
+      if (!target) return;
+      const area = isAreaElement(target);
+      const w = area ? target.w : target.dir === "h" ? target.len : 1;
+      const h = area ? target.d : target.dir === "v" ? target.len : 1;
+      target.col = Math.max(0, Math.min(FLOORPLAN_COLS - w, elementMove.col0 + dCol));
+      target.row = Math.max(0, Math.min(FLOORPLAN_ROWS - h, elementMove.row0 + dRow));
+      elementMove.moved = true;
+      // 전체 레이어를 다시 그리지 않고 끌고 있는 요소만 갱신
+      if (dom) dom.style.cssText = elementStyle(target);
+    });
   };
   const onUp = () => {
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
-    if (elementMove?.moved) saveState();
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    if (elementMove?.moved) {
+      markLayoutEdited(twinActiveCenter(), twinActiveFloor());
+      saveState();
+      refreshRackList();
+      renderRackForm();
+    }
     elementMove = null;
   };
   window.addEventListener("pointermove", onMove);
@@ -3964,6 +3996,7 @@ function nudgeSelectedElement(dCol, dRow) {
   const h = area ? el.d : el.dir === "v" ? el.len : 1;
   el.col = Math.max(0, Math.min(FLOORPLAN_COLS - w, el.col + dCol));
   el.row = Math.max(0, Math.min(FLOORPLAN_ROWS - h, el.row + dRow));
+  markLayoutEdited(twinActiveCenter(), twinActiveFloor());
   saveState();
   refreshRackLayer();
   renderRackForm();
@@ -4066,6 +4099,7 @@ function updateSelectedRack(patch) {
   if (!el) return;
   Object.assign(el, patch);
   if ("customer" in patch && !isAreaElement(el)) el.color = customerColor(el.customer);
+  markLayoutEdited(twinActiveCenter(), twinActiveFloor());
   saveState();
   refreshRackLayer();
   refreshRackList();
@@ -4178,6 +4212,7 @@ function endRackDraw(event) {
   $("#rackPreview").hidden = true;
   getRackLayout(twinActiveCenter(), twinActiveFloor()).racks.push(el);
   selectedRackId = el.id;
+  markLayoutEdited(twinActiveCenter(), twinActiveFloor());
   saveState();
   refreshRackLayer();
   refreshRackList();
@@ -4189,6 +4224,7 @@ function deleteSelectedRack() {
   const layout = getRackLayout(twinActiveCenter(), twinActiveFloor());
   layout.racks = layout.racks.filter((r) => r.id !== selectedRackId);
   selectedRackId = null;
+  markLayoutEdited(twinActiveCenter(), twinActiveFloor());
   saveState();
   refreshRackLayer();
   refreshRackList();
@@ -4201,6 +4237,7 @@ function clearAllRacks() {
   if (!window.confirm("이 센터·층의 모든 배치 요소를 삭제할까요?")) return;
   layout.racks = [];
   selectedRackId = null;
+  markLayoutEdited(twinActiveCenter(), twinActiveFloor());
   saveState();
   refreshRackLayer();
   refreshRackList();
