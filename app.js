@@ -310,6 +310,7 @@ function loadState() {
       layoutToolsOpen: !!parsed.layoutToolsOpen,
       gaonUserId: parsed.gaonUserId || "",
       gaonShippers: parsed.gaonShippers || {},
+      photoPanelOpen: !!parsed.photoPanelOpen,
     };
   } catch {
     return structuredClone(defaultState);
@@ -2809,6 +2810,25 @@ function renderTwinSelectors() {
 function getCenterPhoto(center) {
   return state.centerPhotos[center] || CENTER_IMAGES[center] || "";
 }
+// 이미지 팝업 — 사진·도면을 클릭할 때만 크게 표시
+function openImgModal(src, caption) {
+  if (!src) {
+    alert("표시할 이미지가 없습니다. ‘사진·도면’을 펼쳐 업로드하세요.");
+    return;
+  }
+  const m = $("#imgModal");
+  if (!m) return;
+  $("#imgModalImg").src = src;
+  $("#imgModalCaption").textContent = caption || "";
+  m.hidden = false;
+}
+function closeImgModal() {
+  const m = $("#imgModal");
+  if (!m) return;
+  m.hidden = true;
+  $("#imgModalImg").removeAttribute("src");
+}
+
 function renderTwinPhoto() {
   const img = $("#twinPhotoImg");
   if (img) {
@@ -3964,12 +3984,26 @@ function renderRackEditor() {
   renderRackForm();
 }
 
+// 재고 데이터가 언제 것인지 — gaon은 조회 시점 스냅샷이므로 시각을 함께 보여준다
+function inventoryAgeText(inv) {
+  if (!inv?.importedAt) return "시각 미상";
+  const t = new Date(inv.importedAt);
+  const min = Math.max(0, Math.round((Date.now() - t.getTime()) / 60000));
+  const when = t.toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  if (min < 1) return `방금 (${when})`;
+  if (min < 60) return `${min}분 전 (${when})`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}시간 전 (${when})`;
+  return `${Math.round(hr / 24)}일 전 (${when})`;
+}
+
 function renderInventoryStatus() {
   const inv = getInventory(twinActiveCenter());
   const status = $("#inventoryStatus");
   if (status) {
     if (inv) {
-      status.textContent = `연동됨 · ${inv.cellCount}셀 (${inv.fileName})`;
+      status.textContent = `연동됨 · ${inv.cellCount}셀 · ${inventoryAgeText(inv)}`;
+      status.title = inv.fileName || "";
       status.classList.add("linked");
     } else {
       status.textContent = "재고 미연동";
@@ -4311,6 +4345,9 @@ function selectedRack() {
 
 function selectRack(id) {
   selectedRackId = id;
+  // 입력창에 포커스가 남아 있으면 Del·화살표 단축키가 막히므로 해제한다
+  const ae = document.activeElement;
+  if (ae && ["INPUT", "SELECT", "TEXTAREA"].includes(ae.tagName)) ae.blur();
   refreshRackLayer();
   refreshRackList();
   renderRackForm();
@@ -4487,7 +4524,7 @@ function endRackDraw(event) {
   refreshRackLayer();
   refreshRackList();
   renderRackForm();
-  (info.shape === "area" ? $("#rackName") : $("#rackCustomer"))?.focus();
+  // 입력창으로 포커스를 옮기지 않는다 — 그린 직후 Del·화살표 단축키를 쓸 수 있도록
 }
 
 function deleteSelectedRack() {
@@ -4684,6 +4721,35 @@ function bindRackEditor() {
     if (twinViewMode === "view") render3DTwin();
   });
   syncLabelToggle();
+  // 사진·도면 패널 접기/펼치기 (자주 안 쓰는 업로드류)
+  const applyPhotoFold = () => {
+    const body = $("#photoPanelBody");
+    const btn = $("#photoPanelToggle");
+    if (!body || !btn) return;
+    const open = !!state.photoPanelOpen;
+    body.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    btn.textContent = open ? "사진·도면 ▴" : "사진·도면 ▾";
+    btn.classList.toggle("open", open);
+  };
+  $("#photoPanelToggle")?.addEventListener("click", () => {
+    state.photoPanelOpen = !state.photoPanelOpen;
+    saveState();
+    applyPhotoFold();
+  });
+  applyPhotoFold();
+  // 썸네일 클릭 → 팝업으로 크게 보기
+  $("#twinPhotoThumb")?.addEventListener("click", () => openImgModal($("#twinPhotoImg")?.src, "센터 사진"));
+  $("#twinPlanThumb")?.addEventListener("click", () =>
+    openImgModal($("#twinPlanImg")?.src, `PDF 도면 · ${twinActiveFloor()}`),
+  );
+  $("#imgModalClose")?.addEventListener("click", closeImgModal);
+  $("#imgModal")?.addEventListener("click", (e) => {
+    if (e.target.id === "imgModal") closeImgModal();
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("#imgModal")?.hidden) closeImgModal();
+  });
   $("#twinFullscreen")?.addEventListener("click", toggleTwinFullscreen);
   document.addEventListener("fullscreenchange", syncTwinFullscreenUI);
   document.addEventListener("webkitfullscreenchange", syncTwinFullscreenUI);

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=25" />
+    <link rel="stylesheet" href="./styles.css?v=26" />
   </head>
   <body>
     <div class="app-shell">
@@ -429,37 +429,37 @@
 
             <div class="twin-photo" id="twinPhoto">
               <div class="twin-photo-head">
-                <strong>센터 사진 <span class="twin-photo-sub">(참고용)</span> · 파일 업로드</strong>
+                <strong>재고 · 파일</strong>
+                <div class="twin-photo-uploads">
+                  <button type="button" id="gaonFetch" class="file-button small gaon-btn" title="gaon(전산)에서 셀별 재고를 직접 불러옵니다. 중계 서버(server/serve.py) 필요">🔄 gaon 재고</button>
+                  <span class="save-status" id="inventoryStatus">재고 미연동</span>
+                  <button type="button" id="photoPanelToggle" class="ghost mini bg-fold" aria-expanded="false" title="사진·도면 업로드와 미리보기 펼치기/접기">사진·도면 ▾</button>
+                </div>
+              </div>
+              <div id="photoPanelBody" hidden>
                 <div class="twin-photo-uploads">
                   <label class="file-button small">도면 업로드(PDF/이미지)
                     <input id="rackFloorplanUpload" type="file" accept=".pdf,image/*" />
                   </label>
-                  <label class="file-button small">재고 파일(xlsx)
-                    <input id="inventoryUpload" type="file" accept=".xlsx,.xls,.csv" />
-                  </label>
-                  <button type="button" id="gaonFetch" class="file-button small gaon-btn" title="gaon(전산)에서 셀별 재고를 직접 불러옵니다. 중계 서버(server/serve.py) 필요">🔄 gaon 재고</button>
                   <label class="file-button small">사진 업로드/변경
                     <input id="twinPhotoUpload" type="file" accept="image/*" />
                   </label>
-                  <span class="save-status" id="inventoryStatus">재고 미연동</span>
+                  <label class="file-button small">재고 파일(xlsx)
+                    <input id="inventoryUpload" type="file" accept=".xlsx,.xls,.csv" />
+                  </label>
                 </div>
-              </div>
-              <div class="twin-dual">
-                <figure class="dual-pane">
-                  <figcaption>센터 사진</figcaption>
-                  <div class="twin-photo-body">
+              <div class="twin-thumbs">
+                  <button type="button" class="twin-thumb" id="twinPhotoThumb" title="센터 사진 크게 보기">
                     <img id="twinPhotoImg" alt="센터 사진" />
-                    <div class="twin-photo-empty" id="twinPhotoEmpty">등록된 센터 사진이 없습니다. ‘사진 업로드’로 추가하세요.</div>
-                  </div>
-                </figure>
-                <figure class="dual-pane">
-                  <figcaption>PDF 도면 <span id="twinPlanFloor" class="dual-sub"></span></figcaption>
-                  <div class="twin-photo-body">
+                    <span id="twinPhotoEmpty" class="twin-thumb-empty">센터 사진 없음</span>
+                    <em>센터 사진</em>
+                  </button>
+                  <button type="button" class="twin-thumb" id="twinPlanThumb" title="PDF 도면 크게 보기">
                     <img id="twinPlanImg" alt="센터 도면" />
-                    <div class="twin-photo-empty" id="twinPlanEmpty">도면이 없습니다. ‘도면 업로드’로 추가하세요.</div>
-                  </div>
-                </figure>
-              </div>
+                    <span id="twinPlanEmpty" class="twin-thumb-empty">도면 없음</span>
+                    <em>PDF 도면 <span id="twinPlanFloor"></span></em>
+                  </button>
+                </div>
             </div>
           </section>
         </section>
@@ -549,6 +549,11 @@
     <script src="./assets/vendor/OrbitControls.js"></script>
     <script src="./assets/vendor/xlsx.full.min.js"></script>
     <script src="./assets/vendor/pdf.min.js"></script>
-    <script src="./app.js?v=25"></script>
+    <div class="img-modal" id="imgModal" hidden>
+      <button type="button" class="img-modal-close" id="imgModalClose" title="닫기 (Esc)">✕</button>
+      <figcaption id="imgModalCaption"></figcaption>
+      <img id="imgModalImg" alt="" />
+    </div>
+    <script src="./app.js?v=26"></script>
   </body>
 </html>

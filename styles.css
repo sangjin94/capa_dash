@@ -2661,3 +2661,21 @@ label textarea {
 .danger-mini { padding: 2px 8px; font-size: 12px; border-radius: 6px; cursor: pointer;
   background: #3a1f26; color: #f0a8b8; border: 1px solid rgba(240,120,150,.35); }
 .danger-mini:hover { background: #4d2731; }
+/* 사진·도면 썸네일 + 팝업 보기 */
+.twin-thumbs { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.twin-thumb { position: relative; width: 190px; height: 110px; padding: 0; cursor: zoom-in;
+  border: 1px solid rgba(120,150,190,.25); border-radius: 10px; overflow: hidden; background: #0b111c; }
+.twin-thumb:hover { border-color: rgba(120,200,250,.5); }
+.twin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.twin-thumb em { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 6px; font-style: normal;
+  font-size: 11px; color: #dbe7f5; background: rgba(8,12,20,.78); text-align: left; }
+.twin-thumb-empty { position: absolute; inset: 0; display: grid; place-content: center; font-size: 11px; color: #6b7688; }
+.img-modal { position: fixed; inset: 0; z-index: 1200; background: rgba(4,8,14,.92);
+  display: grid; place-items: center; padding: 40px 24px; }
+.img-modal[hidden] { display: none; }
+.img-modal img { max-width: 96vw; max-height: 86vh; object-fit: contain; border-radius: 8px;
+  background: #fff; box-shadow: 0 24px 60px rgba(0,0,0,.6); }
+.img-modal figcaption { position: absolute; top: 14px; left: 20px; color: #cdd8e8; font-size: 13px; font-weight: 600; }
+.img-modal-close { position: absolute; top: 10px; right: 16px; width: 34px; height: 34px; cursor: pointer;
+  border-radius: 8px; border: 1px solid rgba(140,170,210,.3); background: #16202e; color: #e6edf6; font-size: 15px; }
+.img-modal-close:hover { background: #22314a; }
