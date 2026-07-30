@@ -304,6 +304,7 @@ function loadState() {
       defaultRacksVersion: parsed.defaultRacksVersion || 0,
       bgAdjustOpen: !!parsed.bgAdjustOpen,
       twinLabels: parsed.twinLabels !== false,
+      rackLayoutsBackup: parsed.rackLayoutsBackup || {},
     };
   } catch {
     return structuredClone(defaultState);
@@ -404,8 +405,10 @@ function ensureBaselineState() {
   // 기본 랙/기둥/벽 배치 — 버전이 바뀌면 기본 배치 키를 새로 시드(좌표·도면 갱신 반영)
   if (state.defaultRacksVersion !== DEFAULT_RACKS_VERSION) {
     Object.entries(DEFAULT_RACK_LAYOUTS).forEach(([key, els]) => {
-      // 사용자가 편집한 층은 보존 — 기본값 갱신으로 작업 내용이 사라지지 않도록
-      if (state.rackLayouts[key]?.userEdited) return;
+      // 이미 배치가 있는 층은 절대 자동으로 덮어쓰지 않는다 (작업 내용 보호).
+      // 새 기본 배치를 쓰려면 편집 화면의 '기본 배치 다시 불러오기'를 누른다.
+      const cur = state.rackLayouts[key];
+      if (cur && Array.isArray(cur.racks) && cur.racks.length) return;
       state.rackLayouts[key] = { racks: els.map(materializeDefaultRack) };
     });
     state.defaultRacksVersion = DEFAULT_RACKS_VERSION;
@@ -3720,6 +3723,97 @@ function markLayoutEdited(center, floor) {
   if (!layout.userEdited) layout.userEdited = true;
 }
 
+// 배치 교체 전 스냅샷 보관 (층별 1개) — '되돌리기'로 복구 가능
+function backupLayout(center, floor) {
+  const key = floorplanKey(center, floor);
+  const cur = state.rackLayouts[key];
+  if (!cur || !Array.isArray(cur.racks) || !cur.racks.length) return;
+  if (!state.rackLayoutsBackup) state.rackLayoutsBackup = {};
+  state.rackLayoutsBackup[key] = {
+    racks: JSON.parse(JSON.stringify(cur.racks)),
+    savedAt: new Date().toISOString(),
+  };
+}
+function restoreLayoutBackup() {
+  const center = twinActiveCenter();
+  const floor = twinActiveFloor();
+  const key = floorplanKey(center, floor);
+  const b = state.rackLayoutsBackup?.[key];
+  if (!b || !b.racks?.length) {
+    alert("이 층에는 되돌릴 백업이 없습니다.");
+    return;
+  }
+  const when = b.savedAt ? new Date(b.savedAt).toLocaleString("ko-KR") : "이전";
+  if (!window.confirm(`${floor} 배치를 ${when} 상태(${b.racks.length}개)로 되돌릴까요?`)) return;
+  const cur = state.rackLayouts[key];
+  const prev = cur?.racks?.length ? JSON.parse(JSON.stringify(cur.racks)) : null;
+  state.rackLayouts[key] = { racks: b.racks, userEdited: true };
+  if (prev) state.rackLayoutsBackup[key] = { racks: prev, savedAt: new Date().toISOString() };
+  selectedRackId = null;
+  saveState();
+  renderTwinCurrent();
+}
+// 기본 배치 다시 불러오기 — 사용자가 명시적으로 누를 때만 교체(백업 후)
+function reloadDefaultLayout() {
+  const center = twinActiveCenter();
+  const floor = twinActiveFloor();
+  const key = floorplanKey(center, floor);
+  const els = DEFAULT_RACK_LAYOUTS[key];
+  if (!els) {
+    alert("이 층에는 내장 기본 배치가 없습니다.");
+    return;
+  }
+  const n = state.rackLayouts[key]?.racks?.length || 0;
+  if (!window.confirm(`${floor}의 현재 배치(${n}개)를 기본 배치(${els.length}개)로 교체할까요?\n현재 배치는 백업되어 '되돌리기'로 복구할 수 있습니다.`)) return;
+  backupLayout(center, floor);
+  state.rackLayouts[key] = { racks: els.map(materializeDefaultRack) };
+  selectedRackId = null;
+  saveState();
+  renderTwinCurrent();
+}
+// 배치 백업 파일 내보내기/가져오기 — 브라우저 저장이라 기기 이동·초기화 대비
+function exportLayouts() {
+  const payload = {
+    kind: "capa-dash-layouts",
+    savedAt: new Date().toISOString(),
+    rackLayouts: state.rackLayouts,
+    floorplans: state.floorplans,
+    centerFloors: state.centerFloors,
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `capa_배치백업_${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function importLayouts(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const p = JSON.parse(reader.result);
+      if (p.kind !== "capa-dash-layouts" || !p.rackLayouts) throw new Error("배치 백업 파일이 아닙니다.");
+      if (!window.confirm("백업 파일의 배치·도면으로 현재 내용을 교체할까요?")) return;
+      state.rackLayouts = p.rackLayouts;
+      if (p.floorplans) state.floorplans = p.floorplans;
+      if (p.centerFloors) state.centerFloors = p.centerFloors;
+      Object.values(state.rackLayouts).forEach((l) => {
+        if (l) l.userEdited = true;
+      });
+      selectedRackId = null;
+      saveState();
+      renderAll();
+      alert("배치를 복원했습니다.");
+    } catch (err) {
+      alert("복원 실패: " + err.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = "";
+}
+
 // 랙 보관 CAPA — 1칸(베이) × 1단 = 1 PLT
 function rackSlots(el) {
   if (!el || el.type !== "rack") return 0;
@@ -4250,7 +4344,8 @@ function deleteSelectedRack() {
 function clearAllRacks() {
   const layout = getRackLayout(twinActiveCenter(), twinActiveFloor());
   if (!layout.racks.length) return;
-  if (!window.confirm("이 센터·층의 모든 배치 요소를 삭제할까요?")) return;
+  if (!window.confirm("이 센터·층의 모든 배치 요소를 삭제할까요?\n(‘되돌리기’로 복구할 수 있습니다)")) return;
+  backupLayout(twinActiveCenter(), twinActiveFloor());
   layout.racks = [];
   selectedRackId = null;
   markLayoutEdited(twinActiveCenter(), twinActiveFloor());
@@ -4373,6 +4468,10 @@ function bindRackEditor() {
   $("#areaColor")?.addEventListener("input", (e) => updateSelectedRack({ color: e.target.value }));
   $("#rackDelete")?.addEventListener("click", deleteSelectedRack);
   $("#rackClearAll")?.addEventListener("click", clearAllRacks);
+  $("#layoutUndoBackup")?.addEventListener("click", restoreLayoutBackup);
+  $("#layoutReloadDefault")?.addEventListener("click", reloadDefaultLayout);
+  $("#layoutExport")?.addEventListener("click", exportLayouts);
+  $("#layoutImport")?.addEventListener("change", importLayouts);
   $("#rackFloorplanUpload")?.addEventListener("change", uploadRackFloorplan);
   // 3D 이름 표시 토글
   const syncLabelToggle = () => {

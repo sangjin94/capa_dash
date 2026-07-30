@@ -2549,6 +2549,9 @@ label textarea {
   border: 1px solid rgba(120,160,210,.18); font-size: 12px; color: #9fb2cc; }
 .rack-capa-summary strong { color: #7dd3fc; font-size: 14px; }
 .rack-capa-summary span { display: block; margin-top: 2px; font-size: 11px; color: #6b7688; }
+.layout-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.layout-tools .file-inline { position: relative; overflow: hidden; display: inline-flex; align-items: center; cursor: pointer; }
+.layout-tools .file-inline input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .rack-slots-row { margin: 6px 0; font-size: 12px; color: #9fb2cc; }
 .rack-slots-row strong { color: #7dd3fc; }
 .bg-adjust-body { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
