@@ -3605,6 +3605,11 @@ function updateRackBgView(patch) {
   applyRackBgTransform();
 }
 
+// 자동 맞춤 — 내장 도면은 랙 좌표와 같은 기준으로 만들어져 있어, 보정(identity)으로 되돌리면 정확히 겹침
+function autoAlignRackBg() {
+  updateRackBgView({ reset: true });
+}
+
 function renderRackEditor() {
   const center = twinActiveCenter();
   const floor = twinActiveFloor();
@@ -3976,6 +3981,7 @@ function bindRackEditor() {
   $("#bgWminus")?.addEventListener("click", () => updateRackBgView({ dsx: -1 }));
   $("#bgHplus")?.addEventListener("click", () => updateRackBgView({ dsy: 1 }));
   $("#bgHminus")?.addEventListener("click", () => updateRackBgView({ dsy: -1 }));
+  $("#bgAuto")?.addEventListener("click", autoAlignRackBg);
   $("#bgReset")?.addEventListener("click", () => updateRackBgView({ reset: true }));
   document.querySelectorAll("[data-bg-nudge]").forEach((btn) =>
     btn.addEventListener("click", () => {

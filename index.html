@@ -3,8 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=6" />
   </head>
   <body>
     <div class="app-shell">
@@ -330,6 +331,7 @@
                       <button type="button" class="ghost mini" data-bg-nudge="down">▼</button>
                       <button type="button" class="ghost mini" data-bg-nudge="right">▶</button>
                     </span>
+                    <button type="button" id="bgAuto" class="mini bg-auto">자동 맞춤</button>
                     <button type="button" id="bgReset" class="ghost mini">초기화</button>
                   </div>
                   <span class="rack-editor-hint">도면 위에서 <b>드래그</b>해 요소를 그립니다. 도면이 랙과 안 맞으면 <b>도면 맞춤</b>의 전체 배율·<b>가로/세로</b> 배율·이동으로 정확히 겹치게 조정하세요. (파일 업로드는 아래 <b>센터 사진</b> 옆)</span>
@@ -516,6 +518,6 @@
     <script src="./assets/vendor/OrbitControls.js"></script>
     <script src="./assets/vendor/xlsx.full.min.js"></script>
     <script src="./assets/vendor/pdf.min.js"></script>
-    <script src="./app.js"></script>
+    <script src="./app.js?v=6"></script>
   </body>
 </html>

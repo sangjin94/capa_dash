@@ -2514,6 +2514,9 @@ label textarea {
 .bg-scale-val { font-size: 12px; color: #cdd8e8; min-width: 38px; text-align: right; }
 .bg-nudge { display: inline-flex; gap: 2px; align-items: center; }
 .bg-axis { font-size: 11px; color: #8ea1bd; margin-right: 2px; }
+.bg-auto { padding: 3px 10px; font-size: 12px; border-radius: 6px; border: none; cursor: pointer;
+  background: #2563eb; color: #fff; font-weight: 600; }
+.bg-auto:hover { background: #1d4ed8; }
 .ghost.mini { padding: 2px 7px; font-size: 12px; line-height: 1.4; border-radius: 6px; min-width: 0; }
 
 .rack-stage { position: relative; border-radius: 14px; overflow: hidden; background: #0b111c;
