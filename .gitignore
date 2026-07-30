@@ -10,3 +10,5 @@ Thumbs.db
 # gaon 연동 (자격증명/픽스처 유출 방지)
 server/_fixture_*.json
 .env
+__pycache__/
+*.pyc
