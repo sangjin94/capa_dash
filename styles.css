@@ -2514,6 +2514,7 @@ label textarea {
 .bg-scale-val { font-size: 12px; color: #cdd8e8; min-width: 38px; text-align: right; }
 .bg-nudge { display: inline-flex; gap: 2px; align-items: center; }
 .bg-axis { font-size: 11px; color: #8ea1bd; margin-right: 2px; }
+.build-tag { display: block; margin-top: 6px; font-size: 10px; color: #6b7688; letter-spacing: .2px; }
 .bg-auto { padding: 3px 10px; font-size: 12px; border-radius: 6px; border: none; cursor: pointer;
   background: #2563eb; color: #fff; font-weight: 600; }
 .bg-auto:hover { background: #1d4ed8; }

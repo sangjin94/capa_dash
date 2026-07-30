@@ -4046,6 +4046,12 @@ if (!localStorage.getItem(STORAGE_KEY)) {
   saveState();
 }
 
+// 화면에 현재 배치 버전 표기 — 캐시된 옛 파일이 떠 있는지 바로 확인용
+{
+  const tag = $("#buildTag");
+  if (tag) tag.textContent = `배치 v${DEFAULT_RACKS_VERSION} · 격자 ${FLOORPLAN_COLS}×${FLOORPLAN_ROWS}`;
+}
+
 renderNav();
 renderFilters();
 bindEvents();
