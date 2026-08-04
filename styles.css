@@ -1832,9 +1832,9 @@ th {
 
 .capa-entry-head,
 .capa-entry-row {
-  min-width: 900px;
+  min-width: 980px;
   display: grid;
-  grid-template-columns: 110px 130px 130px 130px 110px 70px minmax(180px, 1fr);
+  grid-template-columns: 110px 130px 100px 130px 130px 110px 70px minmax(160px, 1fr);
   gap: 8px;
   align-items: center;
 }
@@ -2857,3 +2857,6 @@ label textarea {
 .inv-kpi.warn strong { color: #92590a; }
 .inv-filters select:disabled { opacity: .45; }
 @media (max-width: 900px) { .inv-offbook-add { grid-template-columns: 1fr 1fr; } }
+
+/* 센터별 입력 — 도면에서 산출한 분류별 CAPA(참고값) */
+.drawn-capa { font-style: normal; font-weight: 800; font-size: 13px; color: var(--brand); }
