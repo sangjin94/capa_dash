@@ -195,6 +195,24 @@ let _rackSeq = 0;
 // 층별 실재고 합계 캐시 — saveState()가 초기화 중에도 부르므로 선언이 그보다 앞서야 한다
 // (아래쪽에서 let으로 선언하면 TDZ에 걸려 첫 로드가 통째로 중단된다)
 let _floorInvCache = new Map();
+
+/* 서버 공유 동기화 상태 — 실제 로직은 파일 끝에 있지만, 초기화 중 saveState()가
+   scheduleSyncPush()를 부르므로 변수 선언만 여기서 미리 해 둔다(TDZ 방지). */
+const SYNC_SECTIONS = ["rackLayouts", "floorplans", "inventory", "offbook", "records"];
+// 개인 화면 설정은 공유하지 않는다 — 공유하면 남이 패널을 접을 때마다 헛충돌이 난다
+const SYNC_LOCAL_ONLY = new Set([
+  "twinLabels", "twinTypeVis", "twinTypeLabels", "bgAdjustOpen", "layoutToolsOpen",
+  "photoPanelOpen", "gaonUserId", "lastMarketCode", "kakaoApiKey",
+  "defaultRacksSeeded", "defaultRacksVersion", "nami1DiagWalls", "rackLayoutsBackup",
+]);
+const EDITOR_KEY = "hx-editor-name";
+let syncOn = false;
+let syncRevs = {};      // key → 서버 rev
+let syncBase = {};      // key → 서버와 맞춘 시점의 JSON 문자열
+let syncTimer = null;
+let syncPollTimer = null;
+let syncBusy = false;
+let syncConflicts = [];
 // 기본 랙 요소 → 편집 가능한 완전한 요소로 확장(고유 id·기본값 채움)
 function materializeDefaultRack(e) {
   const id = "el-def-" + (_rackSeq++).toString(36);
@@ -526,6 +544,13 @@ function normalizeCenterInfo(center) {
 
 let storageWarned = false;
 function saveState() {
+  const ok = saveLocalOnly();
+  scheduleSyncPush(); // 서버 공유가 켜져 있으면 바뀐 키만 올린다
+  return ok;
+}
+
+// 브라우저 저장만 (서버 내용을 받아 반영할 때는 되돌려 올리지 않도록 이쪽을 쓴다)
+function saveLocalOnly() {
   invalidateCapaCache(); // 배치·재고·미전산이 바뀌면 층별 실재고 합계를 다시 계산
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -6386,7 +6411,318 @@ if (!localStorage.getItem(STORAGE_KEY)) {
   if (tag) tag.textContent = `배치 v${DEFAULT_RACKS_VERSION} · 격자 ${FLOORPLAN_COLS}×${FLOORPLAN_ROWS}`;
 }
 
+/* =========================================================
+   서버 공유 동기화 — 여러 명이 같은 도면을 함께 작업하기 위한 계층
+
+   상태를 키 단위(층별 배치 / 센터별 재고 …)로 쪼개 서버에 올린다.
+   서로 다른 층을 만지는 두 사람은 다른 키를 쓰므로 충돌하지 않고,
+   같은 키를 동시에 고치면 rev 가 어긋나 충돌로 잡힌다.
+   서버가 없으면(파일로 직접 열기 등) 지금까지처럼 브라우저 저장만 쓴다.
+   ========================================================= */
+function editorName() {
+  return localStorage.getItem(EDITOR_KEY) || "";
+}
+// 상태를 서버 저장 단위(키)로 펼친다
+function syncEntries() {
+  const out = {};
+  SYNC_SECTIONS.forEach((sec) => {
+    Object.entries(state[sec] || {}).forEach(([id, v]) => (out[`${sec}/${id}`] = v));
+  });
+  const misc = {};
+  Object.keys(state)
+    .sort() // 키 순서가 흔들려도 '변경'으로 오인하지 않도록 정렬해서 담는다
+    .forEach((k) => {
+      if (!SYNC_SECTIONS.includes(k) && !SYNC_LOCAL_ONLY.has(k)) misc[k] = state[k];
+    });
+  out.misc = misc;
+  return out;
+}
+function applySyncEntry(key, data) {
+  if (key === "misc") {
+    Object.assign(state, data || {});
+    return;
+  }
+  const i = key.indexOf("/");
+  if (i < 0) return;
+  const sec = key.slice(0, i);
+  const id = key.slice(i + 1);
+  if (!SYNC_SECTIONS.includes(sec)) return;
+  if (!state[sec]) state[sec] = {};
+  if (data == null) delete state[sec][id];
+  else state[sec][id] = data;
+}
+
+function renderSyncStatus(text, tone) {
+  const el = $("#syncStatus");
+  if (!el) return;
+  el.hidden = false;
+  const who = editorName();
+  // 공유 중인데 이름이 없으면 눌러서 설정하도록 안내한다
+  el.textContent = syncOn ? `${text} · ${who || "이름 설정하기"}` : text;
+  el.className = "sync-status" + (tone ? " " + tone : "") + (syncOn && !who ? " warn" : "");
+}
+function syncBanner(msg, actions) {
+  const box = $("#syncBanner");
+  if (!box) return;
+  if (!msg) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML =
+    `<span>${escapeHtml(msg)}</span>` +
+    (actions || []).map((a) => `<button type="button" data-sync-act="${a.id}">${escapeHtml(a.label)}</button>`).join("");
+  box.querySelectorAll("[data-sync-act]").forEach((b) =>
+    b.addEventListener("click", () => (actions.find((a) => a.id === b.dataset.syncAct) || {}).run?.()),
+  );
+}
+
+async function syncFetch(path, opts) {
+  const res = await fetch(path, {
+    ...opts,
+    // HTTP 헤더는 ISO-8859-1만 담을 수 있어 한글 이름은 인코딩해서 보낸다
+    headers: { "Content-Type": "application/json", "X-Editor": encodeURIComponent(editorName()), ...(opts?.headers || {}) },
+  });
+  const data = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+  if (res.status === 401 && data.needPassword) {
+    syncOn = false;
+    showSyncLogin();
+    throw new Error("접속 암호가 필요합니다");
+  }
+  return data;
+}
+
+// 서버 스냅샷을 받아 로컬에 반영. force=true 면 로컬 수정분도 서버 것으로 덮는다
+async function syncPull(force = false) {
+  const snap = await syncFetch("/api/store");
+  if (!snap.ok) throw new Error(snap.error || "불러오기 실패");
+  const entries = snap.entries || {};
+  const mine = syncEntries();
+  const changed = [];
+  const blocked = [];
+  Object.entries(entries).forEach(([key, e]) => {
+    const serverJson = JSON.stringify(e.data);
+    if (syncBase[key] === serverJson && syncRevs[key] === e.rev) return; // 이미 최신
+    const localJson = JSON.stringify(mine[key]);
+    const localDirty = syncBase[key] !== undefined && localJson !== syncBase[key];
+    if (localDirty && !force) {
+      blocked.push({ key, by: e.by, updatedAt: e.updatedAt });
+      return;
+    }
+    applySyncEntry(key, e.data);
+    syncRevs[key] = e.rev;
+    syncBase[key] = serverJson;
+    changed.push(key);
+  });
+  if (changed.length) {
+    saveLocalOnly();
+    renderAll();
+    if (twinViewMode === "view") render3DTwin();
+    // 렌더 과정에서 기본값이 채워지며(bgView·record 등) 내용이 살짝 달라질 수 있다.
+    // 그 상태를 기준으로 다시 잡아야 '내가 고치지도 않은 키'가 변경으로 잡히지 않는다.
+    const after = syncEntries();
+    changed.forEach((key) => {
+      if (key in after) syncBase[key] = JSON.stringify(after[key]);
+    });
+  }
+  return { changed, blocked };
+}
+
+// 로컬에서 바뀐 키만 서버로 올린다
+async function syncPush() {
+  if (!syncOn || syncBusy) return;
+  const mine = syncEntries();
+  const changes = [];
+  Object.entries(mine).forEach(([key, data]) => {
+    const json = JSON.stringify(data);
+    if (syncBase[key] === json) return;
+    changes.push({ key, rev: syncRevs[key] ?? 0, data });
+  });
+  // 로컬에서 사라진 키는 삭제로 올린다
+  Object.keys(syncBase).forEach((key) => {
+    if (!(key in mine)) changes.push({ key, rev: syncRevs[key] ?? 0, data: null });
+  });
+  if (!changes.length) return;
+  syncBusy = true;
+  renderSyncStatus("저장 중…", "busy");
+  try {
+    const res = await syncFetch("/api/store", { method: "PUT", body: JSON.stringify({ changes }) });
+    if (!res.ok) throw new Error(res.error || "저장 실패");
+    (res.applied || []).forEach(({ key, rev }) => {
+      syncRevs[key] = rev;
+      const cur = key in mine ? JSON.stringify(mine[key]) : undefined;
+      if (cur === undefined) delete syncBase[key];
+      else syncBase[key] = cur;
+    });
+    syncConflicts = res.conflicts || [];
+    if (syncConflicts.length) {
+      const names = Array.from(new Set(syncConflicts.map((c) => c.by).filter(Boolean))).join(", ");
+      renderSyncStatus(`충돌 ${syncConflicts.length}건`, "warn");
+      syncBanner(
+        `같은 곳을 ${names || "다른 담당자"} 님이 먼저 저장했습니다. 내 수정과 서버 내용이 다릅니다.`,
+        [
+          { id: "take", label: "서버 것 받기(내 수정 취소)", run: async () => { await syncPull(true); syncBanner(""); renderSyncStatus("동기화됨", "ok"); } },
+          { id: "force", label: "내 것으로 덮어쓰기", run: async () => {
+              const forced = syncConflicts.map((c) => ({ key: c.key, data: syncEntries()[c.key] }));
+              const r = await syncFetch("/api/store", { method: "PUT", body: JSON.stringify({ changes: forced }) });
+              if (r.ok) {
+                (r.applied || []).forEach(({ key, rev }) => {
+                  syncRevs[key] = rev;
+                  syncBase[key] = JSON.stringify(syncEntries()[key]);
+                });
+                syncConflicts = [];
+                syncBanner("");
+                renderSyncStatus("동기화됨", "ok");
+              }
+            } },
+        ],
+      );
+    } else {
+      renderSyncStatus("동기화됨", "ok");
+    }
+  } catch (err) {
+    renderSyncStatus("서버 저장 실패 — 브라우저에만 저장됨", "err");
+  } finally {
+    syncBusy = false;
+  }
+}
+
+function scheduleSyncPush() {
+  if (!syncOn) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncPush, 1200); // 연속 편집을 묶어서 한 번에 올린다
+}
+
+// 다른 담당자의 변경 감지 — rev만 가볍게 확인하고 달라진 게 있을 때만 받아온다
+async function syncPollOnce() {
+  if (!syncOn || syncBusy) return;
+  try {
+    const res = await syncFetch("/api/store/revs");
+    if (!res.ok) return;
+    const stale = Object.entries(res.revs || {}).some(([k, r]) => syncRevs[k] !== r);
+    const gone = Object.keys(syncRevs).some((k) => !(k in (res.revs || {})));
+    if (!stale && !gone) return;
+    const { changed, blocked } = await syncPull(false);
+    if (blocked.length) {
+      renderSyncStatus("동료 수정 있음", "warn");
+      syncBanner(
+        `${blocked[0].by || "다른 담당자"} 님이 수정한 내용이 있습니다. 같은 부분을 지금 수정 중이라 자동 반영하지 않았습니다.`,
+        [{ id: "take2", label: "서버 것 받기", run: async () => { await syncPull(true); syncBanner(""); renderSyncStatus("동기화됨", "ok"); } }],
+      );
+    } else if (changed.length) {
+      renderSyncStatus("동료 변경 반영됨", "ok");
+    }
+  } catch {
+    /* 폴링 실패는 조용히 넘긴다 */
+  }
+}
+
+function showSyncLogin(msg) {
+  const box = $("#syncLogin");
+  if (!box) return;
+  box.hidden = false;
+  const err = $("#syncLoginError");
+  if (err) {
+    err.textContent = msg || "";
+    err.hidden = !msg;
+  }
+  setTimeout(() => $("#syncLoginPw")?.focus(), 60);
+}
+
+async function initSync() {
+  let auth;
+  try {
+    auth = await (await fetch("/api/auth/status", { cache: "no-store" })).json();
+  } catch {
+    renderSyncStatus("브라우저 저장 (서버 미연결)", "");
+    return; // 서버 없이 파일로 연 경우 — 지금까지처럼 로컬만 사용
+  }
+  if (auth.needPassword && !auth.authed) {
+    showSyncLogin();
+    return;
+  }
+  syncOn = true;
+  // 이름은 시작할 때 묻지 않는다 — prompt 는 페이지를 멈춰 세우고,
+  // 브라우저가 대화상자를 막아둔 환경에서는 앱이 아예 뜨지 않는다.
+  // 대신 상태 표시를 눌러 언제든 설정할 수 있게 한다.
+  try {
+    const snap = await syncFetch("/api/store");
+    const entries = snap.entries || {};
+    if (Object.keys(entries).length === 0) {
+      // 서버가 비어 있으면 지금 브라우저 내용을 최초 1회 올려 기준을 만든다
+      renderSyncStatus("서버에 최초 업로드 중…", "busy");
+      await syncPush();
+    } else {
+      Object.entries(entries).forEach(([key, e]) => {
+        applySyncEntry(key, e.data);
+        syncRevs[key] = e.rev;
+        syncBase[key] = JSON.stringify(e.data);
+      });
+      ensureBaselineState();
+      saveLocalOnly();
+      renderAll();
+      // 렌더 후 상태를 기준으로 다시 잡는다 (기본값 채움을 내 수정으로 오인하지 않도록)
+      const after = syncEntries();
+      Object.keys(entries).forEach((key) => {
+        if (key in after) syncBase[key] = JSON.stringify(after[key]);
+      });
+      renderSyncStatus("동기화됨", "ok");
+    }
+  } catch (err) {
+    syncOn = false;
+    console.error("서버 공유 초기화 실패:", err);
+    window.__syncError = String(err && err.stack ? err.stack : err);
+    renderSyncStatus("서버 연결 실패 — 브라우저에만 저장", "err");
+    return;
+  }
+  clearInterval(syncPollTimer);
+  syncPollTimer = setInterval(syncPollOnce, 15000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) syncPollOnce();
+  });
+}
+
+function bindSyncUi() {
+  $("#syncLoginBtn")?.addEventListener("click", async () => {
+    const pw = $("#syncLoginPw").value || "";
+    try {
+      const res = await (await fetch("/api/auth/login", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pw }),
+      })).json();
+      if (!res.ok) return showSyncLogin(res.error || "암호가 맞지 않습니다.");
+      location.reload();
+    } catch {
+      showSyncLogin("서버에 연결하지 못했습니다.");
+    }
+  });
+  $("#syncLoginPw")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("#syncLoginBtn").click();
+  });
+  $("#syncStatus")?.addEventListener("click", () => {
+    if (!syncOn) return;
+    const who = (window.prompt("작업자 이름 (누가 수정했는지 표시용)", editorName()) || "").trim();
+    if (who) {
+      localStorage.setItem(EDITOR_KEY, who.slice(0, 40));
+      renderSyncStatus("동기화됨", "ok");
+    }
+  });
+}
+
+if (!localStorage.getItem(STORAGE_KEY)) {
+  seedDemoData();
+  saveState();
+}
+
+// 화면에 현재 배치 버전 표기 — 캐시된 옛 파일이 떠 있는지 바로 확인용
+{
+  const tag = $("#buildTag");
+  if (tag) tag.textContent = `배치 v${DEFAULT_RACKS_VERSION} · 격자 ${FLOORPLAN_COLS}×${FLOORPLAN_ROWS}`;
+}
+
 renderNav();
 renderFilters();
 bindEvents();
+bindSyncUi();
 renderAll();
+initSync();

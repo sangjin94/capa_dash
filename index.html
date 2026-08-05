@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=35" />
+    <link rel="stylesheet" href="./styles.css?v=37" />
   </head>
   <body>
     <div class="app-shell">
@@ -31,11 +31,13 @@
         <div class="sidebar-foot">
           <span>저장 방식</span>
           <strong>브라우저 자동 저장</strong>
+          <button type="button" class="sync-status" id="syncStatus" hidden title="클릭하면 작업자 이름을 바꿉니다">확인 중…</button>
           <small class="build-tag" id="buildTag">배치 v–</small>
         </div>
       </aside>
 
       <main class="content">
+        <div class="sync-banner" id="syncBanner" hidden></div>
         <header class="topbar">
           <div>
             <h1>센터별 보관 CAPA 현황</h1>
@@ -769,6 +771,17 @@
       </section>
     </div>
 
+    <div class="sync-login" id="syncLogin" hidden>
+      <section class="sync-login-card" role="dialog" aria-modal="true" aria-labelledby="syncLoginTitle">
+        <span class="brand-mark">HX</span>
+        <h2 id="syncLoginTitle">센터 CAPA 관리</h2>
+        <p>공유 서버에 접속하려면 공통 암호를 입력하세요.</p>
+        <input id="syncLoginPw" type="password" autocomplete="current-password" placeholder="접속 암호" />
+        <button class="primary" id="syncLoginBtn" type="button">접속</button>
+        <p class="sync-login-error" id="syncLoginError" hidden></p>
+      </section>
+    </div>
+
     <script src="./assets/vendor/three.min.js"></script>
     <script src="./assets/vendor/OrbitControls.js"></script>
     <script src="./assets/vendor/xlsx.full.min.js"></script>
@@ -778,6 +791,6 @@
       <figcaption id="imgModalCaption"></figcaption>
       <img id="imgModalImg" alt="" />
     </div>
-    <script src="./app.js?v=43"></script>
+    <script src="./app.js?v=50"></script>
   </body>
 </html>

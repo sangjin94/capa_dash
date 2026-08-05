@@ -2860,3 +2860,34 @@ label textarea {
 
 /* 센터별 입력 — 도면에서 산출한 분류별 CAPA(참고값) */
 .drawn-capa { font-style: normal; font-weight: 800; font-size: 13px; color: var(--brand); }
+
+/* ── 서버 공유 동기화 ─────────────────────────────────────────────────────── */
+.sync-status { display: block; width: 100%; margin-top: 8px; padding: 5px 9px; text-align: left;
+  border: 1px solid rgba(140,170,210,.28); border-radius: 7px; background: rgba(255,255,255,.06);
+  color: #b8c6dc; font-size: 11px; font-weight: 700; cursor: pointer; }
+.sync-status:hover { background: rgba(255,255,255,.12); }
+.sync-status.ok { color: #7fe0b0; border-color: rgba(120,220,170,.35); }
+.sync-status.busy { color: #ffd591; border-color: rgba(240,200,130,.35); }
+.sync-status.warn { color: #ffc46b; border-color: rgba(240,180,110,.45); background: rgba(240,180,110,.12); }
+.sync-status.err { color: #ff9b95; border-color: rgba(240,140,130,.45); background: rgba(240,140,130,.12); }
+
+.sync-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 14px; padding: 11px 14px; border-radius: 10px;
+  background: #fff7ec; border: 1px solid #f0cd9a; color: #92590a; font-size: 13px; font-weight: 600; }
+.sync-banner button { border: 1px solid #e0b877; border-radius: 7px; padding: 5px 11px;
+  background: #fff; color: #92590a; font-size: 12px; font-weight: 700; }
+.sync-banner button:hover { background: #fff1dd; }
+
+.sync-login { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+  background: #0f1622; }
+.sync-login-card { width: min(360px, calc(100vw - 40px)); display: grid; gap: 10px; justify-items: stretch;
+  padding: 28px; border-radius: 14px; background: #fff; text-align: center;
+  box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+.sync-login-card .brand-mark { justify-self: center; }
+.sync-login-card h2 { margin: 6px 0 0; font-size: 20px; }
+.sync-login-card p { margin: 0 0 6px; color: var(--muted); font-size: 12.5px; }
+.sync-login-card input { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.sync-login-card input:focus { outline: 2px solid rgba(11,92,171,.35); border-color: var(--brand); }
+.sync-login-card button { padding: 10px; border-radius: 8px; }
+.sync-login-error { color: var(--danger); font-weight: 700; }
+.sync-login[hidden], .sync-banner[hidden], .sync-status[hidden] { display: none; }
