@@ -204,6 +204,7 @@ const SYNC_LOCAL_ONLY = new Set([
   "twinLabels", "twinTypeVis", "twinTypeLabels", "bgAdjustOpen", "layoutToolsOpen",
   "photoPanelOpen", "gaonUserId", "lastMarketCode", "kakaoApiKey",
   "defaultRacksSeeded", "defaultRacksVersion", "nami1DiagWalls", "rackLayoutsBackup",
+  "sidebarCollapsed",
 ]);
 const EDITOR_KEY = "hx-editor-name";
 let syncOn = false;
@@ -366,6 +367,7 @@ function loadState() {
       gaonUserId: parsed.gaonUserId || "",
       gaonShippers: parsed.gaonShippers || {},
       photoPanelOpen: !!parsed.photoPanelOpen,
+      sidebarCollapsed: !!parsed.sidebarCollapsed,
       nami1DiagWalls: !!parsed.nami1DiagWalls,
       offbook: parsed.offbook || {},
     };
@@ -6683,6 +6685,29 @@ async function initSync() {
   });
 }
 
+/* ===== 사이드바 접기 ===== */
+function applySidebarCollapsed() {
+  const shell = document.querySelector(".app-shell");
+  const btn = $("#sidebarToggle");
+  if (!shell) return;
+  const on = !!state.sidebarCollapsed;
+  shell.classList.toggle("sidebar-collapsed", on);
+  if (btn) {
+    btn.textContent = on ? "›" : "‹";
+    btn.setAttribute("aria-label", on ? "사이드바 펼치기" : "사이드바 접기");
+  }
+  // 3D 캔버스는 폭이 바뀌면 다시 맞춰야 한다 (CSS 전환이 끝난 뒤)
+  setTimeout(() => {
+    resizeTwin();
+    if (typeof refreshRackLayer === "function" && twinViewMode === "edit") refreshRackLayer();
+  }, 60);
+}
+function toggleSidebar() {
+  state.sidebarCollapsed = !state.sidebarCollapsed;
+  saveState();
+  applySidebarCollapsed();
+}
+
 function bindSyncUi() {
   $("#syncLoginBtn")?.addEventListener("click", async () => {
     const pw = $("#syncLoginPw").value || "";
@@ -6724,5 +6749,15 @@ renderNav();
 renderFilters();
 bindEvents();
 bindSyncUi();
+$("#sidebarToggle")?.addEventListener("click", toggleSidebar);
+document.addEventListener("keydown", (e) => {
+  // Ctrl+B — 입력 중에는 가로채지 않는다
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "b") return;
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  e.preventDefault();
+  toggleSidebar();
+});
+applySidebarCollapsed();
 renderAll();
 initSync();
