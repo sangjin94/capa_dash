@@ -217,10 +217,10 @@ let syncConflicts = [];
 // 기본 랙 요소 → 편집 가능한 완전한 요소로 확장(고유 id·기본값 채움)
 function materializeDefaultRack(e) {
   const id = "el-def-" + (_rackSeq++).toString(36);
-  if (e.type === "rack") {
+  if (e.type === "rack" || e.type === "shelf") {
     return {
-      id, type: "rack", col: e.col, row: e.row, len: e.len, dir: e.dir === "v" ? "v" : "h",
-      levels: e.levels || TWIN_LEVELS, customer: e.customer || "", name: e.name || "",
+      id, type: e.type, col: e.col, row: e.row, len: e.len, dir: e.dir === "v" ? "v" : "h",
+      levels: e.levels || (e.type === "shelf" ? SHELF_LEVELS_DEFAULT : TWIN_LEVELS), customer: e.customer || "", name: e.name || "",
       capa: e.capa || 0, fill: e.fill != null ? e.fill : 0.6, color: e.color || "#5ac8fa",
       cat: e.cat || "",
     };
@@ -734,6 +734,51 @@ function inventoryPrefixes(inv) {
   });
   return Array.from(set).sort();
 }
+/* 단별 접두 — 현장에서 같은 랙이라도 1단(피킹·평치)과 2~4단의 존·랙열 번호가
+   다른 경우가 있다. cellPrefix 를 기본으로 두고, 다른 단만 예외로 지정한다.
+   prefixByLevel = { "1": "05-01" }  (단 번호는 1부터) */
+function rackPrefixForLevel(rack, level) {
+  const ov = rack?.prefixByLevel?.[String(level)];
+  return (ov && String(ov).trim()) || rack?.cellPrefix || "";
+}
+// 이 랙이 쓰는 모든 접두 (색인용)
+function rackAllPrefixes(rack) {
+  const set = new Set();
+  if (rack?.cellPrefix) set.add(rack.cellPrefix);
+  Object.values(rack?.prefixByLevel || {}).forEach((p) => p && set.add(String(p).trim()));
+  return Array.from(set).filter(Boolean);
+}
+// "1=05-01, 2=05-02" ↔ {1:"05-01", 2:"05-02"}
+function parsePrefixByLevel(text) {
+  const out = {};
+  String(text || "")
+    .split(/[,;\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .forEach((part) => {
+      const m = part.match(/^(\d+)\s*[=:]\s*(.+)$/);
+      if (m) out[String(Number(m[1]))] = m[2].trim();
+    });
+  return out;
+}
+function formatPrefixByLevel(map) {
+  return Object.entries(map || {})
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([lv, p]) => `${lv}=${p}`)
+    .join(", ");
+}
+// 셀코드를 담는 랙류 — 파렛트랙(rack)과 경량랙(shelf) 둘 다 gaon 셀 체계를 쓴다
+function isStorageRack(el) {
+  return !!el && (el.type === "rack" || el.type === "shelf") && rackAllPrefixes(el).length > 0;
+}
+// 이 랙이 그 셀(접두·베이·단)을 담당하는가
+function rackCoversCell(rack, p) {
+  const levels = number(rack.levels) || TWIN_LEVELS;
+  if (p.bay < 1 || p.bay > number(rack.len)) return false;
+  if (p.level < 1 || p.level > levels) return false;
+  return rackPrefixForLevel(rack, p.level) === p.prefix;
+}
+
 // 화주별 색상 배치: 셀마다 화주(Y열) 색, 단별로 같은 화주끼리 그룹 정렬(왼쪽 정렬)
 // 반환 {placements:[{b,l,color,customer}], customers:Map(name->color), count, qty}
 function rackInventoryPlacement(inv, rack) {
@@ -742,10 +787,10 @@ function rackInventoryPlacement(inv, rack) {
   const customers = new Map();
   let qty = 0;
   const perLevel = Array.from({ length: levels }, () => []);
-  if (inv && rack.cellPrefix) {
+  if (inv && rackAllPrefixes(rack).length) {
     for (let b = 0; b < len; b++) {
       for (let l = 0; l < levels; l++) {
-        const code = `${rack.cellPrefix}-${pad2(b + 1)}-${pad2((l + 1) * 10)}`;
+        const code = `${rackPrefixForLevel(rack, l + 1)}-${pad2(b + 1)}-${pad2((l + 1) * 10)}`;
         const cell = inv.cells[code];
         if (!cell) continue;
         const name = cell.c || "미지정";
@@ -771,10 +816,10 @@ function occupiedForRack(inv, rack) {
   let plt = 0;
   const len = Math.max(1, Math.round(number(rack.len)));
   const levels = Math.max(1, Math.round(number(rack.levels) || TWIN_LEVELS));
-  if (!inv || !rack.cellPrefix) return { set, count: 0, qty: 0, plt: 0 };
+  if (!inv || !rackAllPrefixes(rack).length) return { set, count: 0, qty: 0, plt: 0 };
   for (let b = 0; b < len; b++) {
     for (let l = 0; l < levels; l++) {
-      const code = `${rack.cellPrefix}-${pad2(b + 1)}-${pad2((l + 1) * 10)}`;
+      const code = `${rackPrefixForLevel(rack, l + 1)}-${pad2(b + 1)}-${pad2((l + 1) * 10)}`;
       const cell = inv.cells[code];
       if (cell) {
         set.add(`${b},${l}`);
@@ -921,9 +966,11 @@ function floorInventoryStats(center, floor) {
   // 접두 → 랙 (같은 층에 한정). 셀을 한 번만 훑기 위해 먼저 색인한다
   const byPrefix = new Map();
   (getRackLayout(center, floor).racks || []).forEach((r) => {
-    if (r.type !== "rack" || !r.cellPrefix) return;
-    if (!byPrefix.has(r.cellPrefix)) byPrefix.set(r.cellPrefix, []);
-    byPrefix.get(r.cellPrefix).push(r);
+    if (!isStorageRack(r)) return;
+    rackAllPrefixes(r).forEach((p) => {
+      if (!byPrefix.has(p)) byPrefix.set(p, []);
+      byPrefix.get(p).push(r);
+    });
   });
   const out = { plt: 0, byCat: emptyByCat(), byCustomer: {} };
   Object.entries(inv.cells || {}).forEach(([code, v]) => {
@@ -931,9 +978,7 @@ function floorInventoryStats(center, floor) {
     if (!p) return;
     const hits = byPrefix.get(p.prefix);
     if (!hits) return;
-    const rack = hits.find(
-      (r) => p.bay >= 1 && p.bay <= number(r.len) && p.level >= 1 && p.level <= (number(r.levels) || TWIN_LEVELS),
-    );
+    const rack = hits.find((r) => rackCoversCell(r, p));
     if (!rack) return;
     const plt = number(v.plt);
     out.plt += plt;
@@ -3296,9 +3341,13 @@ function render3DTwin() {
   const rcEl = $("#twinRackCapa");
   if (rcEl) {
     rcEl.textContent = rc.slots.toLocaleString("ko-KR");
+    const pallet = Math.round((rc.slots - rc.bulkSlots - rc.shelfSlots) * 10) / 10;
     rcEl.title =
-      `랙 ${rc.racks}개 · ${(rc.slots - rc.bulkSlots).toLocaleString("ko-KR")} PLT` +
+      `파렛트랙 ${rc.racks}개 · ${pallet.toLocaleString("ko-KR")} PLT` +
       (rc.bulks ? `\n평치/벌크 ${rc.bulks}구역 · ${rc.bulkSlots.toLocaleString("ko-KR")} PLT` : "") +
+      (rc.shelves
+        ? `\n경량랙 ${rc.shelves}개 · ${rc.shelfLocations.toLocaleString("ko-KR")} 로케이션 (환산 ${rc.shelfSlots.toLocaleString("ko-KR")} PLT)`
+        : "") +
       `\n적재(추정) ${rc.filled.toLocaleString("ko-KR")} PLT`;
   }
 
@@ -3446,6 +3495,7 @@ const TWIN_DEPTH = 0.8; // 랙 깊이(1셀 내)
 // 요소 타입: rack=선(방향), 나머지=사각 영역
 const TWIN_ELEMENT_TYPES = {
   rack: { label: "랙", color: "#f59e0b", shape: "line" },
+  shelf: { label: "경량랙", color: "#7c6cf0", shape: "line" }, // 박스·피킹용 선반 — 로케이션 단위
   bulk: { label: "평치/벌크", color: "#a16207", shape: "area" }, // 바닥 직접 적치 — 면적 기반 CAPA
   office: { label: "사무실", color: "#3b82f6", shape: "area" },
   dock: { label: "도크/출입구", color: "#eab308", shape: "area" },
@@ -3747,9 +3797,10 @@ function buildTwinBlocks(items) {
       return;
     }
     const boxMat = twinBoxMat(res, spec.color || "#5ac8fa");
-    buildTwinRackUnit(group, res, spec, boxMat, batch);
+    if (spec.type === "shelf") buildTwinShelfUnit(group, res, spec, boxMat, batch);
+    else buildTwinRackUnit(group, res, spec, boxMat, batch);
     const horiz = spec.dir !== "v";
-    const H = spec.levels * TWIN_LEVEL_H;
+    const H = spec.levels * (spec.type === "shelf" ? SHELF_LEVEL_H : TWIN_LEVEL_H);
     const pickGeo = horiz
       ? new THREE.BoxGeometry(spec.len, H, 1)
       : new THREE.BoxGeometry(1, H, spec.len);
@@ -3785,6 +3836,62 @@ function buildTwinBlocks(items) {
     }
   });
   twinBatchFlush(batch, group);
+}
+
+/* 경량랙 — 파렛트랙보다 낮고 얕은 선반. 파렛트 대신 얇은 선반판과 작은 박스로 그린다.
+   단수가 많아(기본 5단) 같은 높이에 더 촘촘하게 들어간다. */
+const SHELF_LEVEL_H = 0.85;
+function buildTwinShelfUnit(group, res, spec, boxMat, batch) {
+  const horiz = spec.dir !== "v";
+  const levels = Math.max(1, Math.round(spec.levels || SHELF_LEVELS_DEFAULT));
+  const len = Math.max(1, Math.round(spec.len));
+  const depth = 0.55; // 파렛트랙(1칸)보다 얕다
+  const H = levels * SHELF_LEVEL_H;
+  const cx = horiz ? spec.col + len / 2 : spec.col + 0.5;
+  const cz = horiz ? spec.row + 0.5 : spec.row + len / 2;
+  const yRot = horiz ? 0 : Math.PI / 2;
+
+  // 선반판
+  const deckGeo = new THREE.BoxGeometry(len * 0.98, 0.06, depth);
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x8e97a8, roughness: 0.7, metalness: 0.3 });
+  for (let l = 0; l < levels; l++) {
+    const d = new THREE.Mesh(deckGeo, deckMat);
+    d.position.set(cx, (l + 1) * SHELF_LEVEL_H, cz);
+    d.rotation.y = yRot;
+    d.receiveShadow = true;
+    group.add(d);
+  }
+  // 기둥 4개
+  const postGeo = new THREE.BoxGeometry(0.07, H, 0.07);
+  [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach(([sx, sz]) => {
+    const post = new THREE.Mesh(postGeo, res.steel);
+    const along = (len / 2 - 0.1) * sx;
+    const across = (depth / 2 - 0.05) * sz;
+    post.position.set(cx + (horiz ? along : across), H / 2, cz + (horiz ? across : along));
+    group.add(post);
+  });
+  // 적재 박스 — 적재율만큼 채운다
+  const fill = clamp01(spec.fill != null ? spec.fill : 0.6);
+  const bGeo = new THREE.BoxGeometry(0.6, SHELF_LEVEL_H * 0.55, depth * 0.8);
+  for (let b = 0; b < len; b++) {
+    for (let l = 0; l < levels; l++) {
+      if ((b * 3 + l * 5) % 10 >= Math.round(fill * 10)) continue;
+      const along = spec.col + (horiz ? b + 0.5 : 0.5);
+      const across = spec.row + (horiz ? 0.5 : b + 0.5);
+      const x = horiz ? along : spec.col + 0.5;
+      const z = horiz ? spec.row + 0.5 : across;
+      const y = l * SHELF_LEVEL_H + SHELF_LEVEL_H * 0.55;
+      const px = horiz ? spec.col + b + 0.5 : x;
+      const pz = horiz ? z : spec.row + b + 0.5;
+      if (batch) twinBatchPush(batch, bGeo, boxMat, px, y, pz, yRot);
+      else {
+        const m = new THREE.Mesh(bGeo, boxMat);
+        m.position.set(px, y, pz);
+        m.rotation.y = yRot;
+        group.add(m);
+      }
+    }
+  }
 }
 
 // 사선(자유선) 벽 — 두 점 사이를 y축 회전한 판으로 세운다
@@ -4315,6 +4422,23 @@ function rackSlots(el) {
   const levels = Math.max(1, Math.round(number(el.levels) || TWIN_LEVELS));
   return len * levels;
 }
+/* 경량랙 — 파렛트가 아니라 박스·피킹 로케이션이라 단위가 다르다.
+   로케이션 수(베이 × 단)로 따로 세고, 보고용으로 PLT 환산치도 같이 낸다. */
+const SHELF_LEVELS_DEFAULT = 5;
+const SHELF_PLT_FACTOR = 0.2; // 로케이션 1칸 ≈ 0.2 PLT (요소별로 조정 가능)
+function shelfLocations(el) {
+  if (!el || el.type !== "shelf") return 0;
+  const len = Math.max(0, Math.round(number(el.len)));
+  const levels = Math.max(1, Math.round(number(el.levels) || SHELF_LEVELS_DEFAULT));
+  return len * levels;
+}
+function shelfPltFactor(el) {
+  const f = el?.pltFactor;
+  return f == null || Number.isNaN(Number(f)) ? SHELF_PLT_FACTOR : Math.max(0, number(f));
+}
+function shelfPlt(el) {
+  return Math.round(shelfLocations(el) * shelfPltFactor(el) * 10) / 10;
+}
 // 평치/벌크 적치 — 랙 없이 바닥에 쌓는 구역.
 // 격자 1칸 = 파렛트 1개 자리(랙 1베이와 동일 기준)라 면적 × 단수 × 유효적재율로 환산한다.
 const BULK_STACK_DEFAULT = 2; // 기본 적재 단수
@@ -4331,15 +4455,18 @@ function bulkSlots(el) {
   const area = Math.max(0, Math.round(number(el.w))) * Math.max(0, Math.round(number(el.d)));
   return Math.round((area * bulkStack(el) * bulkRate(el)) / 100);
 }
-// 요소 1개가 제공하는 보관 CAPA (랙 + 평치)
+// 요소 1개가 제공하는 보관 CAPA (PLT 기준)
 function elementSlots(el) {
-  return el?.type === "bulk" ? bulkSlots(el) : rackSlots(el);
+  if (el?.type === "bulk") return bulkSlots(el);
+  if (el?.type === "shelf") return shelfPlt(el);
+  return rackSlots(el);
 }
-// 층 단위 보관 CAPA 집계 — 랙과 평치/벌크를 함께 센다
+// 층 단위 보관 CAPA 집계 — 파렛트랙 + 평치/벌크 + 경량랙(환산)
 function floorRackCapa(center, floor) {
   const all = getRackLayout(center, floor).racks || [];
   const racks = all.filter((e) => e.type === "rack");
   const bulks = all.filter((e) => e.type === "bulk");
+  const shelves = all.filter((e) => e.type === "shelf");
   let slots = 0;
   let filled = 0;
   let assigned = 0;
@@ -4359,7 +4486,23 @@ function floorRackCapa(center, floor) {
     byCat[elementCat(e)] = (byCat[elementCat(e)] || 0) + s;
     filled += Math.round(clamp01(e.fill != null ? e.fill : 0.6) * s);
   });
-  return { racks: racks.length, bulks: bulks.length, bulkSlots: bulkTotal, slots, filled, assigned, byCat };
+  // 경량랙: 로케이션 수는 따로 세고, PLT 환산치만 전체 CAPA에 더한다
+  let shelfLoc = 0;
+  let shelfTotal = 0;
+  shelves.forEach((e) => {
+    shelfLoc += shelfLocations(e);
+    const s = shelfPlt(e);
+    shelfTotal += s;
+    slots += s;
+    byCat[elementCat(e)] = (byCat[elementCat(e)] || 0) + s;
+    filled += Math.round(clamp01(e.fill != null ? e.fill : 0.6) * s);
+  });
+  slots = Math.round(slots * 10) / 10;
+  return {
+    racks: racks.length, bulks: bulks.length, bulkSlots: bulkTotal,
+    shelves: shelves.length, shelfLocations: shelfLoc, shelfSlots: Math.round(shelfTotal * 10) / 10,
+    slots, filled, assigned, byCat,
+  };
 }
 
 function isAreaElement(el) {
@@ -5085,10 +5228,10 @@ function analyzeInventory(center) {
   const rackList = centerRackElements(center);
   const byPrefix = new Map(); // 접두 → [{floor, el}]
   rackList.forEach((r) => {
-    const p = (r.el.cellPrefix || "").trim();
-    if (!p) return;
-    if (!byPrefix.has(p)) byPrefix.set(p, []);
-    byPrefix.get(p).push(r);
+    rackAllPrefixes(r.el).forEach((p) => {
+      if (!byPrefix.has(p)) byPrefix.set(p, []);
+      byPrefix.get(p).push(r);
+    });
   });
 
   const cells = [];
@@ -5096,9 +5239,7 @@ function analyzeInventory(center) {
     const parsed = parseCellCode(code) || { zone: "", aisle: "", bay: 0, level: 0, prefix: code };
     const hits = byPrefix.get(parsed.prefix) || [];
     // 베이·단이 랙 정의 안에 들어오는 것을 우선 채택. 접두는 맞는데 벗어나면 '범위 초과'
-    const fit = hits.find(
-      (h) => parsed.bay >= 1 && parsed.bay <= number(h.el.len) && parsed.level >= 1 && parsed.level <= (number(h.el.levels) || TWIN_LEVELS),
-    );
+    const fit = hits.find((h) => rackCoversCell(h.el, parsed));
     const ref = fit || hits[0] || null;
     cells.push({
       code,
@@ -5142,17 +5283,18 @@ function analyzeInventory(center) {
   // 랙 단위 집계 (접두 미지정·빈 랙도 포함)
   const racks = rackList.map(({ floor, el }) => {
     const len = number(el.len);
-    const levels = number(el.levels) || TWIN_LEVELS;
+    const levels = number(el.levels) || (el.type === "shelf" ? SHELF_LEVELS_DEFAULT : TWIN_LEVELS);
     const slots = Math.max(0, len * levels);
-    const occ = el.cellPrefix ? occupiedForRack(inv, el) : { count: 0, qty: 0, plt: 0 };
+    const occ = rackAllPrefixes(el).length ? occupiedForRack(inv, el) : { count: 0, qty: 0, plt: 0 };
     const custs = new Set();
-    if (el.cellPrefix) cells.forEach((c) => c.rackId === el.id && c.status === "mapped" && custs.add(c.c));
+    if (rackAllPrefixes(el).length) cells.forEach((c) => c.rackId === el.id && c.status === "mapped" && custs.add(c.c));
     return {
       floor, id: el.id, label: invRackLabel(el), prefix: el.cellPrefix || "",
       len, levels, slots, used: occ.count, qty: occ.qty, plt: Math.round(occ.plt * 10) / 10,
       rate: slots ? Math.round((occ.count / slots) * 1000) / 10 : 0,
       customerList: Array.from(custs).sort(),
-      status: !el.cellPrefix ? "noprefix" : occ.count ? "mapped" : "empty",
+      shelf: el.type === "shelf",
+      status: !rackAllPrefixes(el).length ? "noprefix" : occ.count ? "mapped" : "empty",
       dupe: el.cellPrefix ? (byPrefix.get(el.cellPrefix) || []).length > 1 : false,
     };
   });
@@ -5199,6 +5341,13 @@ function analyzeInventory(center) {
   const offbook = offbookList(center);
   kpi.offbookPlt = Math.round(offbookPlt(center) * 10) / 10;
   kpi.offbookCount = offbook.length;
+  // 경량랙은 파렛트와 단위가 달라 로케이션 수로 따로 보여준다
+  const shelfEls = getCenterFloors(center).flatMap((f) =>
+    (getRackLayout(center, f).racks || []).filter((e) => e.type === "shelf"),
+  );
+  kpi.shelves = shelfEls.length;
+  kpi.shelfLocations = sum(shelfEls, (e) => shelfLocations(e));
+  kpi.shelfPlt = Math.round(sum(shelfEls, (e) => shelfPlt(e)) * 10) / 10;
 
   const issues = {
     unmapped: unmappedCells.length,
@@ -5353,6 +5502,7 @@ function renderInventoryView() {
     { label: "미맵핑", value: invNum(k.unmapped + k.overflow), sub: `${invNum(k.unmappedPlt)} PLT`, tone: k.unmapped + k.overflow ? "bad" : "" },
     { label: "총 재고", value: invNum(k.totalPlt), sub: "PLT (gaon)" },
     { label: "미전산재고", value: invNum(k.offbookPlt), sub: `PLT · ${k.offbookCount}건`, tone: k.offbookPlt ? "warn" : "" },
+    { label: "경량랙", value: invNum(k.shelfLocations), sub: `로케이션 · ${k.shelves}개 (≈${invNum(k.shelfPlt)} PLT)` },
     { label: "랙 슬롯 점유", value: `${k.rate}%`, sub: `${invNum(k.usedSlots)} / ${invNum(k.slots)}칸` },
   ]
     .map(
@@ -5480,8 +5630,8 @@ function renderInventoryTable(data) {
       return `<tr class="${r.status}" data-rack-id="${escapeAttr(r.id)}" data-floor="${escapeAttr(r.floor)}">
         <td>${escapeHtml(r.floor)}</td>
         <td>${escapeHtml(r.label)}</td>
-        <td>${r.bulk ? `<span class="inv-badge">평치</span>` : `<input class="inv-prefix-input mono" data-rack-id="${escapeAttr(r.id)}" data-floor="${escapeAttr(r.floor)}" value="${escapeAttr(r.prefix)}" list="invPrefixList" placeholder="예: 02-01" />`}</td>
-        <td class="num">${invNum(r.slots)}<em class="dim"> ${r.len}×${r.levels}${r.bulk ? "단" : ""}</em></td>
+        <td>${r.bulk ? `<span class="inv-badge">평치</span>` : `<input class="inv-prefix-input mono" data-rack-id="${escapeAttr(r.id)}" data-floor="${escapeAttr(r.floor)}" value="${escapeAttr(r.prefix)}" list="invPrefixList" placeholder="예: 02-01" />${r.shelf ? `<span class="inv-badge">경량</span>` : ""}`}</td>
+        <td class="num">${invNum(r.slots)}<em class="dim"> ${r.len}×${r.levels}${r.bulk ? "단" : r.shelf ? "단 로케" : ""}</em></td>
         <td class="num">${invNum(r.used)}</td>
         <td class="num"><span class="inv-rate"><i style="width:${Math.min(100, r.rate)}%"></i></span>${r.rate}%</td>
         <td class="num">${r.plt}</td>
@@ -5817,7 +5967,9 @@ function refreshRackList() {
           ? `평치 ${r.w}×${r.d}칸 · ${bulkStack(r)}단 · ${bulkSlots(r)} PLT`
           : isAreaElement(r)
             ? `${elementTypeInfo(r.type).label} ${r.w}×${r.d}`
-            : `${r.dir === "v" ? "세로" : "가로"} ${r.len}칸·${r.levels || TWIN_LEVELS}단 · ${rackSlots(r)} PLT`;
+            : r.type === "shelf"
+              ? `경량랙 ${r.len}칸·${r.levels || SHELF_LEVELS_DEFAULT}단 · ${shelfLocations(r)}로케 (≈${shelfPlt(r)} PLT)`
+              : `${r.dir === "v" ? "세로" : "가로"} ${r.len}칸·${r.levels || TWIN_LEVELS}단 · ${rackSlots(r)} PLT`;
       return `<div class="rack-list-item ${r.id === selectedRackId ? "selected" : ""}" data-rack-id="${r.id}">
           <span class="sw" style="background:${elementColor(r)}"></span>
           <span>${isFreeWall(r) ? r.name || "벽/챔버" : elementLabel(r)}${!isAreaElement(r) && !isFreeWall(r) && r.name ? " · " + r.name : ""}</span>
@@ -5895,6 +6047,13 @@ function renderRackForm() {
     catOpts("#rackCat", elementCat(el));
     $("#rackCustomer").value = el.customer || "";
     $("#rackCellPrefix").value = el.cellPrefix || "";
+    $("#rackPrefixByLevel").value = formatPrefixByLevel(el.prefixByLevel);
+    const shelf = el.type === "shelf";
+    $("#shelfFactorRow").hidden = !shelf;
+    if (shelf) {
+      $("#shelfPltFactor").value = shelfPltFactor(el);
+      $("#shelfPltHint").textContent = `${shelfLocations(el)}로케 → ${shelfPlt(el)} PLT`;
+    }
     $("#rackLevels").value = el.levels || TWIN_LEVELS;
     $("#rackLen").value = el.len;
     $("#rackDir").value = el.dir === "v" ? "v" : "h";
@@ -5902,9 +6061,11 @@ function renderRackForm() {
     // 보관 CAPA = 베이 × 단 (1칸·1단 = 1 PLT)
     const slotsEl = $("#rackSlots");
     if (slotsEl) {
-      const s = rackSlots(el);
-      const lv = el.levels || TWIN_LEVELS;
-      slotsEl.textContent = `${s.toLocaleString("ko-KR")} PLT (${el.len}칸 × ${lv}단)`;
+      const lv = el.levels || (el.type === "shelf" ? SHELF_LEVELS_DEFAULT : TWIN_LEVELS);
+      slotsEl.textContent =
+        el.type === "shelf"
+          ? `${shelfLocations(el).toLocaleString("ko-KR")} 로케이션 (${el.len}칸 × ${lv}단) ≈ ${shelfPlt(el)} PLT`
+          : `${rackSlots(el).toLocaleString("ko-KR")} PLT (${el.len}칸 × ${lv}단)`;
     }
     const fillPct = Math.round((el.fill != null ? el.fill : 0.6) * 100);
     $("#rackFill").value = fillPct;
@@ -5913,7 +6074,7 @@ function renderRackForm() {
     const inv = getInventory(twinActiveCenter());
     const hint = $("#rackPrefixHint");
     if (hint) {
-      if (inv && el.cellPrefix) {
+      if (inv && rackAllPrefixes(el).length) {
         const occ = occupiedForRack(inv, el);
         const plt = Math.round(occ.plt * 10) / 10;
         hint.textContent = `실재고 ${occ.count}/${el.len * (el.levels || TWIN_LEVELS)}칸` + (plt ? ` · ${plt} PLT` : "");
@@ -6023,7 +6184,7 @@ function updateRackPreview() {
   } else if (info.shape === "area") {
     rect = { type: twinElementType, ...areaDragRect(rackDrag.start, rackDrag.cur), color: info.color };
   } else {
-    rect = { type: "rack", ...rackDragRect(rackDrag.start, rackDrag.cur), color: info.color };
+    rect = { type: twinElementType, ...rackDragRect(rackDrag.start, rackDrag.cur), color: info.color };
   }
   preview.hidden = false;
   preview.style.cssText = elementStyle(rect);
@@ -6066,19 +6227,22 @@ function endRackDraw(event) {
     }
   } else {
     const r = rackDragRect(rackDrag.start, cur);
+    const isShelf = twinElementType === "shelf";
     el = {
       id,
-      type: "rack",
+      type: isShelf ? "shelf" : "rack",
       col: r.col,
       row: r.row,
       len: r.len,
       dir: r.dir,
-      levels: TWIN_LEVELS,
+      levels: isShelf ? SHELF_LEVELS_DEFAULT : TWIN_LEVELS,
       customer: "",
       name: "",
       capa: 0,
       fill: 0.6,
-      color: customerColor(""),
+      color: isShelf ? elementTypeInfo("shelf").color : customerColor(""),
+      cat: "",
+      ...(isShelf ? { pltFactor: SHELF_PLT_FACTOR } : {}),
     };
   }
   rackDrag = null;
@@ -6169,12 +6333,15 @@ function bindRackEditor() {
   $("#rackCustomer")?.addEventListener("input", (e) => updateSelectedRack({ customer: e.target.value.trim() }));
   $("#rackCellPrefix")?.addEventListener("input", (e) => {
     updateSelectedRack({ cellPrefix: e.target.value.trim() });
+    renderAll();
     const el = selectedRack();
     const inv = getInventory(twinActiveCenter());
     const hint = $("#rackPrefixHint");
     if (hint && el) {
       hint.textContent =
-        inv && el.cellPrefix ? `실재고 ${occupiedForRack(inv, el).count}/${el.len * (el.levels || TWIN_LEVELS)}칸` : "";
+        inv && rackAllPrefixes(el).length
+          ? `실재고 ${occupiedForRack(inv, el).count}/${el.len * (el.levels || TWIN_LEVELS)}칸`
+          : "";
     }
   });
   $("#inventoryUpload")?.addEventListener("change", uploadInventory);
@@ -6315,6 +6482,19 @@ function bindRackEditor() {
     updateSelectedRack({ cat: e.target.value });
     renderAll();
   };
+  // 단별 접두 예외 (예: 1단만 번호가 다른 랙)
+  $("#rackPrefixByLevel")?.addEventListener("change", (e) => {
+    const map = parsePrefixByLevel(e.target.value);
+    updateSelectedRack({ prefixByLevel: Object.keys(map).length ? map : undefined });
+    renderRackForm();
+    renderAll();
+  });
+  // 경량랙 PLT 환산계수
+  $("#shelfPltFactor")?.addEventListener("change", (e) => {
+    updateSelectedRack({ pltFactor: Math.max(0, Math.min(5, Number(e.target.value) || 0)) });
+    renderRackForm();
+    renderAll();
+  });
   $("#rackCat")?.addEventListener("change", catPatch);
   $("#bulkCat")?.addEventListener("change", catPatch);
   $("#rackDelete")?.addEventListener("click", deleteSelectedRack);
