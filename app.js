@@ -204,8 +204,23 @@ const SYNC_LOCAL_ONLY = new Set([
   "twinLabels", "twinTypeVis", "twinTypeLabels", "bgAdjustOpen", "layoutToolsOpen",
   "photoPanelOpen", "gaonUserId", "lastMarketCode", "kakaoApiKey",
   "defaultRacksSeeded", "defaultRacksVersion", "nami1DiagWalls", "rackLayoutsBackup",
-  "sidebarCollapsed",
+  "sidebarCollapsed", "rackEditMode",
 ]);
+
+/* 배치 편집 모드 — 실수로 요소가 생기는 걸 막기 위해 기본은 '이동'.
+   lock  보기만 · pick  선택/속성편집 · move  이동까지 · create  새로 그리기까지 */
+const EDIT_MODES = {
+  lock: { label: "고정", canSelect: false, canMove: false, canDraw: false, canDelete: false },
+  pick: { label: "값편집", canSelect: true, canMove: false, canDraw: false, canDelete: false },
+  move: { label: "이동", canSelect: true, canMove: true, canDraw: false, canDelete: true },
+  create: { label: "생성", canSelect: true, canMove: true, canDraw: true, canDelete: true },
+};
+function editMode() {
+  return EDIT_MODES[state.rackEditMode] ? state.rackEditMode : "move";
+}
+function editCan(what) {
+  return !!EDIT_MODES[editMode()][what];
+}
 const EDITOR_KEY = "hx-editor-name";
 let syncOn = false;
 let syncRevs = {};      // key → 서버 rev
@@ -368,6 +383,7 @@ function loadState() {
       gaonShippers: parsed.gaonShippers || {},
       photoPanelOpen: !!parsed.photoPanelOpen,
       sidebarCollapsed: !!parsed.sidebarCollapsed,
+      rackEditMode: parsed.rackEditMode || "move",
       nami1DiagWalls: !!parsed.nami1DiagWalls,
       offbook: parsed.offbook || {},
     };
@@ -1013,6 +1029,51 @@ function offbookStats(center, floor) {
   out.plt = r1(out.plt);
   Object.keys(out.byCat).forEach((k) => (out.byCat[k] = r1(out.byCat[k])));
   Object.keys(out.byCustomer).forEach((k) => (out.byCustomer[k] = r1(out.byCustomer[k])));
+  return out;
+}
+
+/* 보관 형태별(파렛트랙 / 경량랙 / 평치) 용량·점유 — 단위가 달라 합쳐 보면 뜻이 흐려진다.
+   파렛트랙·평치는 PLT, 경량랙은 로케이션 수가 본래 단위다. */
+function floorCapaBreakdown(center, floor) {
+  const inv = getInventory(center);
+  const els = getRackLayout(center, floor).racks || [];
+  const off = offbookList(center).filter((o) => o.floor === floor);
+  const out = {
+    rack: { label: "파렛트랙", unit: "PLT", capacity: 0, used: 0, count: 0 },
+    shelf: { label: "경량랙", unit: "로케", capacity: 0, used: 0, count: 0, plt: 0, usedPlt: 0 },
+    bulk: { label: "평치/벌크", unit: "PLT", capacity: 0, used: 0, count: 0 },
+  };
+  els.forEach((el) => {
+    if (el.type === "rack") {
+      out.rack.count += 1;
+      out.rack.capacity += rackSlots(el);
+      if (inv && rackAllPrefixes(el).length) out.rack.used += occupiedForRack(inv, el).plt;
+    } else if (el.type === "shelf") {
+      out.shelf.count += 1;
+      out.shelf.capacity += shelfLocations(el);
+      out.shelf.plt += shelfPlt(el);
+      if (inv && rackAllPrefixes(el).length) {
+        const occ = occupiedForRack(inv, el);
+        out.shelf.used += occ.count; // 경량랙은 '찬 로케이션 수'로 센다
+        out.shelf.usedPlt += occ.plt;
+      }
+    } else if (el.type === "bulk") {
+      out.bulk.count += 1;
+      out.bulk.capacity += bulkSlots(el);
+      const matched = off.filter(
+        (o) => (o.area && (o.area === el.name || o.area === el.customer)) || (!o.area && el.customer && o.customer === el.customer),
+      );
+      out.bulk.used += matched.reduce((a, o) => a + number(o.plt), 0);
+    }
+  });
+  const r1 = (n) => Math.round(n * 10) / 10;
+  Object.values(out).forEach((v) => {
+    v.capacity = r1(v.capacity);
+    v.used = r1(v.used);
+    v.rate = v.capacity ? Math.round((v.used / v.capacity) * 1000) / 10 : 0;
+  });
+  out.shelf.plt = r1(out.shelf.plt);
+  out.shelf.usedPlt = r1(out.shelf.usedPlt);
   return out;
 }
 
@@ -3338,6 +3399,27 @@ function render3DTwin() {
   $("#twinUsed").textContent = number(totals.used).toLocaleString("ko-KR");
   $("#twinFree").textContent = free.toLocaleString("ko-KR");
   $("#twinRate").textContent = percent(totals.used, totals.capacity) + "%";
+  // 보관 형태별 점유 — 파렛트랙/경량랙/평치는 단위가 달라 따로 보여준다
+  const bd = floorCapaBreakdown(center, floor);
+  const bdEl = $("#twinBreakdown");
+  if (bdEl) {
+    const rows = [
+      bd.rack.count ? { ...bd.rack, key: "rack" } : null,
+      bd.shelf.count ? { ...bd.shelf, key: "shelf" } : null,
+      bd.bulk.count ? { ...bd.bulk, key: "bulk" } : null,
+    ].filter(Boolean);
+    bdEl.hidden = !rows.length;
+    bdEl.innerHTML = rows
+      .map((r) => {
+        const extra = r.key === "shelf" ? `<em>≈${r.usedPlt} / ${r.plt} PLT</em>` : "";
+        return `<div class="twin-bd-row ${r.key}">
+          <span class="twin-bd-name">${r.label}<i>${r.count}</i></span>
+          <span class="twin-bd-bar"><i style="width:${Math.min(100, r.rate)}%"></i></span>
+          <span class="twin-bd-val"><b>${r.rate}%</b> ${r.used.toLocaleString("ko-KR")} / ${r.capacity.toLocaleString("ko-KR")} ${r.unit}${extra}</span>
+        </div>`;
+      })
+      .join("");
+  }
   const rc = floorRackCapa(center, floor);
   const rcEl = $("#twinRackCapa");
   if (rcEl) {
@@ -3512,7 +3594,7 @@ function elementTypeInfo(type) {
 
 // 이름표 기본값: 사용자가 이름을 직접 입력한 경우에만 표시하는 타입
 // (벽/챔버·도크/출입구·통로·기둥·랙은 이름을 넣기 전까지 라벨을 띄우지 않는다)
-const TWIN_LABEL_NAMED_ONLY = new Set(["rack", "dock", "aisle", "column", "wall"]);
+const TWIN_LABEL_NAMED_ONLY = new Set(["rack", "shelf", "dock", "aisle", "column", "wall"]);
 // 3D 보기에서 기본으로 숨기는 타입 (표시 요소 패널에서 켤 수 있음)
 const TWIN_HIDDEN_BY_DEFAULT = new Set(["wall"]);
 
@@ -3520,11 +3602,19 @@ function twinTypeVisible(type) {
   const v = state.twinTypeVis?.[type];
   return v === undefined ? !TWIN_HIDDEN_BY_DEFAULT.has(type) : v !== false;
 }
-// named = 사용자가 이름을 직접 입력했는지. 패널에서 켜고 끄면 그 설정이 우선한다.
+/* 타입 단위 '이름표' 설정값 — 전역 이름표시 토글과 무관하게 그 타입 자체의 설정.
+   표시 요소 패널의 체크박스는 반드시 이 값을 보여줘야 한다. 전역 토글이 꺼진 상태에서
+   패널을 열면 전부 꺼진 것처럼 보였고, 거기서 켜면 이름 없는 요소까지 라벨이 붙었다. */
+function twinTypeLabelSetting(type) {
+  const v = state.twinTypeLabels?.[type];
+  if (v !== undefined) return !!v;
+  return !TWIN_LABEL_NAMED_ONLY.has(type);
+}
+// named = 사용자가 이름을 직접 입력했는지
 function twinTypeLabelOn(type, named) {
   if (state.twinLabels === false) return false;
   const v = state.twinTypeLabels?.[type];
-  if (v !== undefined) return !!v;
+  if (v !== undefined) return !!v || named; // 강제로 켜도, 꺼도 '직접 넣은 이름'은 살린다
   return named || !TWIN_LABEL_NAMED_ONLY.has(type);
 }
 
@@ -3717,8 +3807,8 @@ function renderTwinLayerPanel() {
   rows.innerHTML = Object.entries(TWIN_ELEMENT_TYPES)
     .map(([key, v]) => {
       const vis = twinTypeVisible(key);
-      // 이름표 체크는 '이름 없는 요소에도 라벨을 띄우는가'를 나타낸다
-      const lab = twinTypeLabelOn(key, false);
+      // 이름표 체크 = '이름을 안 넣은 요소에도 타입명을 띄우는가'
+      const lab = twinTypeLabelSetting(key);
       return `<label class="twin-layer-row ${vis ? "" : "off"}">
         <span class="twin-layer-name"><i class="sw" style="background:${v.color}"></i>${v.label}</span>
         <input type="checkbox" data-layer-vis="${key}" ${vis ? "checked" : ""} title="3D에 표시" />
@@ -3827,8 +3917,10 @@ function buildTwinBlocks(items) {
     twinState.pick.push(pick);
     // 이름을 지정한 랙만 이름 표시 (표시 요소 패널에서 강제로 켜면 고객사명 사용)
     const rackLabel = (spec.name && String(spec.name).trim()) || "";
-    if (twinTypeLabelOn("rack", !!rackLabel)) {
-      const label = makeTwinLabel(rackLabel || spec.customer || "랙");
+    const rackCust = spec.customer && spec.customer !== "미지정" ? spec.customer : "";
+    const rackText = rackLabel || rackCust;
+    if (rackText && twinTypeLabelOn("rack", !!rackLabel)) {
+      const label = makeTwinLabel(rackText);
       label.position.set(
         horiz ? spec.col + spec.len / 2 : spec.col + 0.5,
         H + 0.8,
@@ -4572,6 +4664,35 @@ function elementStyle(el) {
   const w = ((area ? el.w : horiz ? el.len : 1) / FLOORPLAN_COLS) * 100;
   const h = ((area ? el.d : horiz ? 1 : el.len) / FLOORPLAN_ROWS) * 100;
   return `left:${left}%;top:${top}%;width:${w}%;height:${h}%;--rc:${elementColor(el)};`;
+}
+
+// 편집 모드 UI — 버튼 활성화 + 안내문 + 격자 커서
+function renderEditModes() {
+  const mode = editMode();
+  document.querySelectorAll("[data-edit-mode]").forEach((b) =>
+    b.classList.toggle("active", b.dataset.editMode === mode),
+  );
+  const stage = $("#rackStage");
+  if (stage) {
+    Object.keys(EDIT_MODES).forEach((m) => stage.classList.toggle("mode-" + m, m === mode));
+  }
+  const picker = $("#rackTypePicker");
+  if (picker) picker.hidden = mode !== "create"; // 생성 모드에서만 타입 선택이 의미 있다
+  const hint = $("#rackEditorHint");
+  if (hint) {
+    hint.innerHTML =
+      {
+        lock: "<b>고정</b> — 보기 전용입니다. 실수로 바뀌지 않습니다.",
+        pick: "<b>값편집</b> — 클릭해 선택하고 오른쪽에서 속성만 고칩니다. 이동·생성·삭제는 안 됩니다.",
+        move: "<b>이동</b> — 요소를 끌어서 옮깁니다. 선택 후 <b>화살표</b>=1칸(<b>Shift</b>=5칸), <b>Del</b>=삭제. 빈 곳을 끌어도 새로 만들어지지 않습니다.",
+        create: "<b>생성</b> — 아래에서 타입을 고르고 빈 곳을 <b>드래그</b>하면 새 요소가 생깁니다. 요소 드래그=이동, <b>Del</b>=삭제.",
+      }[mode] || "";
+  }
+}
+function setEditMode(mode) {
+  state.rackEditMode = EDIT_MODES[mode] ? mode : "move";
+  saveState();
+  renderEditModes();
 }
 
 function renderRackTypePicker() {
@@ -5864,6 +5985,13 @@ function refreshRackLayer() {
 let elementMove = null;
 function startElementMove(event, id) {
   if (twinViewMode !== "edit") return;
+  if (!editCan("canSelect")) return;
+  if (!editCan("canMove")) {
+    // 값편집 모드 — 선택만 하고 끌지는 않는다
+    event.stopPropagation();
+    selectRack(id);
+    return;
+  }
   const grid = $("#rackGrid");
   if (!grid) return;
   const el = getRackLayout(twinActiveCenter(), twinActiveFloor()).racks.find((r) => r.id === id);
@@ -5931,6 +6059,7 @@ function startElementMove(event, id) {
 
 // 선택 요소를 화살표 키로 1칸씩 이동
 function nudgeSelectedElement(dCol, dRow) {
+  if (!editCan("canMove")) return false;
   const el = selectedRack();
   if (!el) return false;
   if (isFreeWall(el)) {
@@ -6153,6 +6282,7 @@ function areaDragRect(start, cur) {
 
 function startRackDraw(event) {
   if (twinViewMode !== "edit") return;
+  if (!editCan("canDraw")) return; // 생성 모드에서만 새 요소를 만든다
   const grid = $("#rackGrid");
   if (!grid) return;
   event.preventDefault();
@@ -6265,6 +6395,7 @@ function endRackDraw(event) {
 }
 
 function deleteSelectedRack() {
+  if (!editCan("canDelete")) return;
   const layout = getRackLayout(twinActiveCenter(), twinActiveFloor());
   layout.racks = layout.racks.filter((r) => r.id !== selectedRackId);
   selectedRackId = null;
@@ -6944,6 +7075,10 @@ renderFilters();
 bindEvents();
 bindSyncUi();
 $("#sidebarToggle")?.addEventListener("click", toggleSidebar);
+document.querySelectorAll("[data-edit-mode]").forEach((b) =>
+  b.addEventListener("click", () => setEditMode(b.dataset.editMode)),
+);
+renderEditModes();
 document.addEventListener("keydown", (e) => {
   // Ctrl+B — 입력 중에는 가로채지 않는다
   if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "b") return;

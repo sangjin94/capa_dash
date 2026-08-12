@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>한익스프레스 센터 CAPA 관리</title>
-    <link rel="stylesheet" href="./styles.css?v=38" />
+    <link rel="stylesheet" href="./styles.css?v=39" />
   </head>
   <body>
     <div class="app-shell">
@@ -315,6 +315,7 @@
                 <div class="twin-kpi"><span>점유율</span><strong id="twinRate">–</strong></div>
                 <div class="twin-kpi rackcapa" title="랙 1칸(베이) × 1단 = 1 PLT, 평치/벌크는 면적(칸) × 적재단수 × 유효적재율 기준으로 도면 배치에서 계산한 보관 CAPA"><span>도면 기준 CAPA</span><strong id="twinRackCapa">–</strong></div>
               </div>
+              <div class="twin-hud twin-breakdown" id="twinBreakdown"></div>
               <div class="twin-hud twin-legend" id="twinLegend"></div>
               <div class="twin-tooltip" id="twinTooltip"></div>
               <div class="twin-empty" id="twinEmpty">
@@ -364,7 +365,13 @@
                       <button class="mini danger-mini" id="rackClearAll" type="button" title="이 층의 모든 배치를 삭제합니다(확인 문구 입력 필요)">전체 삭제</button>
                     </div>
                   </div>
-                  <span class="rack-editor-hint">빈 곳 <b>드래그</b>=새 요소, <b>요소 드래그</b>=이동. 선택 후 <b>화살표</b>=1칸 이동(<b>Shift+화살표</b>=5칸), <b>Del</b>=삭제. 파일 업로드는 아래 <b>센터 사진</b> 옆.</span>
+                  <div class="edit-modes" id="editModes" role="group" aria-label="편집 모드">
+                    <button type="button" class="edit-mode" data-edit-mode="lock" title="보기만 — 아무것도 바뀌지 않습니다">🔒 고정</button>
+                    <button type="button" class="edit-mode" data-edit-mode="pick" title="클릭해서 선택하고 속성만 수정합니다 (이동·생성 안 됨)">✏️ 값편집</button>
+                    <button type="button" class="edit-mode active" data-edit-mode="move" title="요소를 끌어서 옮깁니다 (빈 곳을 끌어도 새로 만들어지지 않음)">✋ 이동</button>
+                    <button type="button" class="edit-mode" data-edit-mode="create" title="빈 곳을 끌면 새 요소를 만듭니다">➕ 생성</button>
+                  </div>
+                  <span class="rack-editor-hint" id="rackEditorHint"></span>
                 </div>
                 <div class="rack-type-picker" id="rackTypePicker"></div>
                 <div class="rack-stage" id="rackStage">
@@ -799,6 +806,6 @@
       <figcaption id="imgModalCaption"></figcaption>
       <img id="imgModalImg" alt="" />
     </div>
-    <script src="./app.js?v=56"></script>
+    <script src="./app.js?v=58"></script>
   </body>
 </html>
