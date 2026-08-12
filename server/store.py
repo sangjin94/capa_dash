@@ -20,7 +20,11 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+# 실데이터 폴더. 테스트할 때는 CAPA_DATA_DIR 로 다른 폴더를 지정해
+# 실제 도면 작업 결과를 건드리지 않는다.
+DATA_DIR = os.environ.get("CAPA_DATA_DIR") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "data"
+)
 STATE_PATH = os.path.join(DATA_DIR, "state.json")
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 MAX_BACKUPS = 30

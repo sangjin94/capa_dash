@@ -3280,7 +3280,8 @@ function render3DTwin() {
               ? clamp01(e.fill)
               : Math.min(1, 0.25 + (capa / maxCapa) * 0.75);
         items.push({
-          type: "rack",
+          // 경량랙은 전용 렌더러로 보내야 한다 (여기서 rack 으로 뭉뚱그리면 파렛트랙으로 그려짐)
+          type: e.type === "shelf" ? "shelf" : "rack",
           col: e.col,
           row: e.row,
           len,
@@ -3534,6 +3535,8 @@ function twinResources() {
   const res = {
     H,
     steel: new THREE.MeshStandardMaterial({ color: 0x5b6675, roughness: 0.5, metalness: 0.65 }),
+    // 경량랙 기둥 — 현장 실물이 흰색 도장이라 파렛트랙 기둥과 구분되게 흰색으로 세운다
+    shelfPost: new THREE.MeshStandardMaterial({ color: 0xf4f6fa, roughness: 0.55, metalness: 0.1 }),
     beam: new THREE.MeshStandardMaterial({ color: 0xff7a2f, roughness: 0.5, metalness: 0.5 }),
     wood: new THREE.MeshStandardMaterial({ color: 0x8a6b45, roughness: 0.9, metalness: 0.05 }),
     palGeo: new THREE.BoxGeometry(0.82, 0.12, TWIN_DEPTH * 0.85),
@@ -3861,15 +3864,19 @@ function buildTwinShelfUnit(group, res, spec, boxMat, batch) {
     d.receiveShadow = true;
     group.add(d);
   }
-  // 기둥 4개
-  const postGeo = new THREE.BoxGeometry(0.07, H, 0.07);
-  [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach(([sx, sz]) => {
-    const post = new THREE.Mesh(postGeo, res.steel);
-    const along = (len / 2 - 0.1) * sx;
-    const across = (depth / 2 - 0.05) * sz;
-    post.position.set(cx + (horiz ? along : across), H / 2, cz + (horiz ? across : along));
-    group.add(post);
-  });
+  // 기둥 — 흰색 (파렛트랙의 회색 기둥과 구분). 긴 랙은 중간에도 세워 실물처럼 보이게
+  const postGeo = new THREE.BoxGeometry(0.09, H, 0.09);
+  const step = 4; // 4칸마다 한 조
+  for (let b = 0; b <= len; b += step) {
+    const along = Math.min(b, len) - len / 2;
+    [-1, 1].forEach((sz) => {
+      const across = (depth / 2 - 0.03) * sz;
+      const post = new THREE.Mesh(postGeo, res.shelfPost);
+      post.position.set(cx + (horiz ? along : across), H / 2, cz + (horiz ? across : along));
+      post.castShadow = true;
+      group.add(post);
+    });
+  }
   // 적재 박스 — 적재율만큼 채운다
   const fill = clamp01(spec.fill != null ? spec.fill : 0.6);
   const bGeo = new THREE.BoxGeometry(0.6, SHELF_LEVEL_H * 0.55, depth * 0.8);
@@ -6819,6 +6826,13 @@ async function initSync() {
   } catch {
     renderSyncStatus("브라우저 저장 (서버 미연결)", "");
     return; // 서버 없이 파일로 연 경우 — 지금까지처럼 로컬만 사용
+  }
+  // 공유가 꺼져 있으면(기본) 서버는 정적 파일과 gaon 중계만 한다.
+  // 서버가 브라우저 내용을 덮어쓰는 일이 없어야 해서 여기서 확실히 끊는다.
+  if (!auth.share) {
+    syncOn = false;
+    renderSyncStatus("브라우저 저장", "");
+    return;
   }
   if (auth.needPassword && !auth.authed) {
     showSyncLogin();

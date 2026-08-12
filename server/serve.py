@@ -33,6 +33,9 @@ PORT = int(os.environ.get("PORT", "5180"))
 HOST = os.environ.get("HOST", "127.0.0.1")
 # 공통 암호 — 설정하면 접속 시 1회 입력해야 API를 쓸 수 있다. 비우면 잠금 없음
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+# 공유 저장소는 기본 꺼짐. 여럿이 같이 쓸 때만 SHARE=1 로 켠다.
+# (꺼져 있으면 앱은 지금까지처럼 브라우저 저장만 쓰고, 서버가 화면을 덮어쓰지 않는다)
+SHARE_ENABLED = os.environ.get("SHARE", "").strip().lower() not in ("", "0", "false", "no")
 COOKIE = "hxsid"
 
 # 로그인 세션은 이 프로세스 메모리에만 둔다 (비밀번호는 저장하지 않는다)
@@ -121,7 +124,10 @@ class Handler(SimpleHTTPRequestHandler):
         u = urlparse(self.path)
         # ── 접속 암호 ────────────────────────────────────────────────────
         if u.path == "/api/auth/status":
-            return self._json({"ok": True, "needPassword": bool(APP_PASSWORD), "authed": self._authed()})
+            return self._json({
+                "ok": True, "needPassword": bool(APP_PASSWORD),
+                "authed": self._authed(), "share": SHARE_ENABLED,
+            })
         if u.path == "/api/auth/logout":
             raw = self.headers.get("Cookie") or ""
             try:
@@ -134,6 +140,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True}, cookie=f"{COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
 
         # ── 공유 저장소 ──────────────────────────────────────────────────
+        if u.path.startswith("/api/store") and not SHARE_ENABLED:
+            return self._json({"ok": False, "shareOff": True, "error": "공유 저장소가 꺼져 있습니다 (SHARE=1 로 실행)"}, 404)
         if u.path == "/api/store":
             if self._guard():
                 return
@@ -199,6 +207,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_PUT(self):
         u = urlparse(self.path)
+        if u.path.startswith("/api/store") and not SHARE_ENABLED:
+            return self._json({"ok": False, "shareOff": True, "error": "공유 저장소가 꺼져 있습니다 (SHARE=1 로 실행)"}, 404)
         if u.path == "/api/store":
             if self._guard():
                 return
@@ -256,7 +266,10 @@ if __name__ == "__main__":
     where = "localhost 전용" if HOST in ("127.0.0.1", "localhost") else f"{HOST} (외부 접속 허용)"
     print(f"capa_dash 서버 → http://localhost:{PORT}   [{where}]")
     print(f"  정적 폴더: {ROOT}")
-    print(f"  공유 저장소: {st['path']}  (키 {st['keys']}개 · {st['bytes']:,} bytes)")
+    if SHARE_ENABLED:
+        print(f"  공유 저장소: 켜짐 · {st['path']}  (키 {st['keys']}개 · {st['bytes']:,} bytes)")
+    else:
+        print("  공유 저장소: 꺼짐 (브라우저 저장만 사용. 함께 쓰려면 SHARE=1)")
     print(f"  접속 암호: {'설정됨' if APP_PASSWORD else '없음 (APP_PASSWORD 미설정, 아무나 접속 가능)'}")
     print(f"  gaon 자격증명: {'설정됨' if creds else '없음 (앱에서 직접 로그인)'}")
     if HOST not in ("127.0.0.1", "localhost") and not APP_PASSWORD:
