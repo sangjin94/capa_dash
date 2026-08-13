@@ -1,4 +1,4 @@
-"""capa_dash 로컬 서버 + gaon 재고 연동 중계.
+r"""capa_dash 로컬 서버 + gaon 재고 연동 중계.
 
 실행:
   set GAON_ID=사번
