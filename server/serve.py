@@ -248,8 +248,11 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json({"ok": False, "error": "사번과 비밀번호가 필요합니다."}, 400)
                 SESSION.login(company, uid, pw)
                 # 비밀번호는 어디에도 저장하지 않는다 (세션 쿠키만 메모리에 유지)
+                print(f"  gaon 로그인 성공: 사번 {uid} (회사코드 {company})")
                 return self._json({"ok": True, "userId": uid})
             except Exception as e:
+                # 실패 원인을 콘솔에도 남긴다 (비밀번호는 절대 찍지 않는다)
+                print(f"  gaon 로그인 실패: 사번 {uid} / 회사코드 {company} → {e}")
                 return self._json({"ok": False, "error": str(e)}, 401)
         self.send_error(404)
 
